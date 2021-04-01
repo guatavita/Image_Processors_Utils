@@ -176,7 +176,7 @@ class Random_Translation(ImageProcessor):
         return image_features
 
 
-class central_crop_img(ImageProcessor):
+class Central_Crop_Img(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
         self.image_keys = image_keys
 
