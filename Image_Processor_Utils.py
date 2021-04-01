@@ -229,10 +229,11 @@ class Binarize_And_Remove_Unconnected(ImageProcessor):
                     keep_id = label_id
                     volume_max = volume_id
 
-            mask = tf.math.equal(tf.expand_dims(tf.squeeze(labels), axis=-1), [keep_id])
-            # binary = tf.expand_dims(tf.cast(tf.where(mask, 1, 0), dtype='float32'), axis=-1)
+            # WARNING always specify the tf.sqeeze axis otherwise tensor.shape.ndims may be None
+            mask = tf.math.equal(tf.expand_dims(tf.squeeze(labels, axis=0), axis=-1), [keep_id])
             binary = tf.cast(tf.where(mask, 1, 0), dtype=image.dtype)
             image = tf.math.multiply(image, binary)
+
             image_features[key] = tf.cast(image, dtype=dtype)
 
         return image_features
