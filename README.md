@@ -2,6 +2,6 @@
 
 This submodule necessitates:
 
-brianmanderson/Base_Deeplearning_Code
-https://github.com/brianmanderson/Base_Deeplearning_Code.git
+brianmanderson/Image_Processors_Module
+https://github.com/brianmanderson/Image_Processors_Module.git
 
