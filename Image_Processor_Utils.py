@@ -125,10 +125,18 @@ class Random_Left_Right_flip(ImageProcessor):
 
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.image_keys)
-        # keep the same seed for the session to apply same flip to paired keys
-        seed = np.random.randint(low=0, high=9999)
         for key in self.image_keys:
-            image_features[key] = tf.image.random_flip_left_right(image_features[key], seed)
+            img_shape = tf.shape(image_features[key])
+            if len(img_shape) == 4:
+                image = tf.Variable(image_features[key], dtype=image_features[key].dtype)
+                random_var = tf.random.uniform([1], minval=0, maxval=2, dtype=tf.dtypes.int32)
+                if random_var == 1:
+                    for ind in range(img_shape[0]):
+                        image[ind, ...].assign(tf.image.flip_left_right(image[ind, ...]))
+                    image_features[key] = tf.convert_to_tensor(image)
+            else:
+                image_features[key] = tf.image.random_flip_left_right(image_features[key])
+
         return image_features
 
 
