@@ -136,6 +136,23 @@ class Random_Left_Right_flip(ImageProcessor):
 
         return image_features
 
+class Random_Up_Down_flip(ImageProcessor):
+    def __init__(self, image_keys=('image', 'annotation')):
+        self.image_keys = image_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.image_keys)
+        for key in self.image_keys:
+            img_shape = tf.shape(image_features[key])
+            if len(img_shape) == 4:
+                random_var = tf.random.uniform([1], minval=0, maxval=2, dtype=tf.dtypes.int32)
+                if random_var == 1:
+                    image_features[key] = tf.image.flip_up_down(image_features[key])
+            else:
+                image_features[key] = tf.image.random_flip_up_down(image_features[key])
+
+        return image_features
+
 
 class Random_Rotation(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'), angle=0.25):
