@@ -128,12 +128,9 @@ class Random_Left_Right_flip(ImageProcessor):
         for key in self.image_keys:
             img_shape = tf.shape(image_features[key])
             if len(img_shape) == 4:
-                image = tf.Variable(image_features[key], dtype=image_features[key].dtype)
                 random_var = tf.random.uniform([1], minval=0, maxval=2, dtype=tf.dtypes.int32)
                 if random_var == 1:
-                    for ind in range(img_shape[0]):
-                        image[ind, ...].assign(tf.image.flip_left_right(image[ind, ...]))
-                    image_features[key] = tf.convert_to_tensor(image)
+                    image_features[key] = tf.image.flip_left_right(image_features[key])
             else:
                 image_features[key] = tf.image.random_flip_left_right(image_features[key])
 
