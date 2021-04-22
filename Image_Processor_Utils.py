@@ -26,19 +26,19 @@ class Ensure_Image_Key_Proportions(ImageProcessor):
         self.image_keys = image_keys
         self.interp = interp
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
 
         for key, method in zip(self.image_keys, self.interp):
-            assert len(image_features[key].shape) > 2, 'You should do an expand_dimensions before this!'
+            assert len(input_features[key].shape) > 2, 'You should do an expand_dimensions before this!'
 
-            image_features[key] = tf.image.resize(image_features[key], (self.image_rows, self.image_cols),
+            input_features[key] = tf.image.resize(input_features[key], (self.image_rows, self.image_cols),
                                                   method=method, preserve_aspect_ratio=self.preserve_aspect_ratio)
-            image_features[key] = tf.image.resize_with_crop_or_pad(image_features[key],
+            input_features[key] = tf.image.resize_with_crop_or_pad(input_features[key],
                                                                    target_width=self.image_cols,
                                                                    target_height=self.image_rows)
 
-        return image_features
+        return input_features
 
 
 class Per_Image_Z_Normalization(ImageProcessor):
@@ -49,14 +49,14 @@ class Per_Image_Z_Normalization(ImageProcessor):
         self.image_keys = image_keys
         self.dtypes = dtypes
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         for key, dtype in zip(self.image_keys, self.dtypes):
-            image = tf.cast(image_features[key], dtype='float32')
+            image = tf.cast(input_features[key], dtype='float32')
             image = tf.image.per_image_standardization(image=image)
-            image_features[key] = tf.cast(image, dtype=dtype)
+            input_features[key] = tf.cast(image, dtype=dtype)
 
-        return image_features
+        return input_features
 
 
 class Per_Image_MinMax_Normalization(ImageProcessor):
@@ -68,10 +68,10 @@ class Per_Image_MinMax_Normalization(ImageProcessor):
         self.image_keys = image_keys
         self.threshold_value = threshold_value
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
-            image = image_features[key]
+            image = input_features[key]
             image = tf.math.divide(
                 tf.math.subtract(
                     image,
@@ -83,9 +83,9 @@ class Per_Image_MinMax_Normalization(ImageProcessor):
                 )
             )
             image = tf.multiply(image, tf.cast(self.threshold_value, image.dtype))
-            image_features[key] = image
+            input_features[key] = image
 
-        return image_features
+        return input_features
 
 
 class Random_Crop_and_Resize(ImageProcessor):
@@ -106,52 +106,52 @@ class Random_Crop_and_Resize(ImageProcessor):
         self.interp = interp
         self.preserve_aspect_ratio = preserve_aspect_ratio
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         random_index = np.random.randint(0, len(self.scales))
         scale = self.scales[random_index]
         if scale != 1.0:
             for key, method in zip(self.image_keys, self.interp):
-                croppped_img = tf.image.central_crop(image_features[key], scale)
-                image_features[key] = tf.image.resize(croppped_img, size=(self.image_rows, self.image_cols),
+                croppped_img = tf.image.central_crop(input_features[key], scale)
+                input_features[key] = tf.image.resize(croppped_img, size=(self.image_rows, self.image_cols),
                                                       method=method, preserve_aspect_ratio=self.preserve_aspect_ratio)
 
-        return image_features
+        return input_features
 
 
 class Random_Left_Right_flip(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
         self.image_keys = image_keys
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
-            img_shape = tf.shape(image_features[key])
+            img_shape = tf.shape(input_features[key])
             if len(img_shape) == 4:
                 random_var = tf.random.uniform([1], minval=0, maxval=2, dtype=tf.dtypes.int32)
                 if random_var == 1:
-                    image_features[key] = tf.image.flip_left_right(image_features[key])
+                    input_features[key] = tf.image.flip_left_right(input_features[key])
             else:
-                image_features[key] = tf.image.random_flip_left_right(image_features[key])
+                input_features[key] = tf.image.random_flip_left_right(input_features[key])
 
-        return image_features
+        return input_features
 
 class Random_Up_Down_flip(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
         self.image_keys = image_keys
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
-            img_shape = tf.shape(image_features[key])
+            img_shape = tf.shape(input_features[key])
             if len(img_shape) == 4:
                 random_var = tf.random.uniform([1], minval=0, maxval=2, dtype=tf.dtypes.int32)
                 if random_var == 1:
-                    image_features[key] = tf.image.flip_up_down(image_features[key])
+                    input_features[key] = tf.image.flip_up_down(input_features[key])
             else:
-                image_features[key] = tf.image.random_flip_up_down(image_features[key])
+                input_features[key] = tf.image.random_flip_up_down(input_features[key])
 
-        return image_features
+        return input_features
 
 
 class Random_Rotation(ImageProcessor):
@@ -165,13 +165,13 @@ class Random_Rotation(ImageProcessor):
         self.interp = interp
         self.angle = angle
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         angles = tf.random.uniform(shape=[], minval=-self.angle, maxval=self.angle)
         for key, method in zip(self.image_keys, self.interp):
-            image_features[key] = tfa.image.rotate(images=image_features[key], angles=angles, interpolation=method)
+            input_features[key] = tfa.image.rotate(images=input_features[key], angles=angles, interpolation=method)
 
-        return image_features
+        return input_features
 
 
 class Random_Translation(ImageProcessor):
@@ -183,30 +183,30 @@ class Random_Translation(ImageProcessor):
         self.translation_y = translation_y
         self.dtypes = dtypes
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         tx = tf.random.uniform(shape=[], minval=-self.translation_x, maxval=self.translation_x)
         ty = tf.random.uniform(shape=[], minval=-self.translation_y, maxval=self.translation_y)
         for key, method, dtype in zip(self.image_keys, self.interp, self.dtypes):
             # for some reasons this function needs float32 input
-            images = tf.cast(image_features[key], dtype='float32')
+            images = tf.cast(input_features[key], dtype='float32')
             images = tfa.image.translate(images=images, translations=[tx, ty],
                                          interpolation=method, fill_mode='constant',
                                          fill_value=tf.math.reduce_min(images))
-            image_features[key] = tf.cast(images, dtype=dtype)
+            input_features[key] = tf.cast(images, dtype=dtype)
 
-        return image_features
+        return input_features
 
 
 class Central_Crop_Img(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
         self.image_keys = image_keys
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
-            image_features[key] = tf.image.central_crop(image=image_features[key], central_fraction=0.5)
-        return image_features
+            input_features[key] = tf.image.central_crop(image=input_features[key], central_fraction=0.5)
+        return input_features
 
 
 class Binarize_And_Remove_Unconnected(ImageProcessor):
@@ -217,10 +217,10 @@ class Binarize_And_Remove_Unconnected(ImageProcessor):
         self.image_keys = image_keys
         self.dtypes = dtypes
 
-    def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.image_keys)
+    def pre_process(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
         for key, dtype in zip(self.image_keys, self.dtypes):
-            image = tf.cast(image_features[key], dtype='float32')
+            image = tf.cast(input_features[key], dtype='float32')
             mask = tf.math.greater(image, tf.constant([0], dtype=image.dtype))
             binary = tf.where(mask, 1, 0)
             # label id are classified by first apparition
@@ -256,6 +256,6 @@ class Binarize_And_Remove_Unconnected(ImageProcessor):
             binary = tf.cast(tf.where(mask, 1, 0), dtype=image.dtype)
             image = tf.math.multiply(image, binary)
 
-            image_features[key] = tf.cast(image, dtype=dtype)
+            input_features[key] = tf.cast(image, dtype=dtype)
 
-        return image_features
+        return input_features
