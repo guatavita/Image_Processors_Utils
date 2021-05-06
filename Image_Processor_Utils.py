@@ -17,8 +17,26 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
+
+class Repeat_Channel_Per_Key(ImageProcessor):
+    def __init__(self, axis=-1, repeats=3, image_keys=('image',),):
+        '''
+        :param axis: axis to expand
+        :param repeats: number of repeats
+        '''
+        self.axis = axis
+        self.repeats = repeats
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features, *args, **kwargs):
+        for key in self.image_keys:
+            input_features[key] = tf.repeat(input_features[key], axis=self.axis, repeats=self.repeats)
+
+        return input_features
+
+
 class Expand_Dimensions_Per_Key(ImageProcessor):
-    def __init__(self, axis=-1, image_keys=('image', 'annotation'),):
+    def __init__(self, axis=-1, image_keys=('image',)):
         self.axis = axis
         self.image_keys = image_keys
 
@@ -47,7 +65,6 @@ class Ensure_Image_Key_Proportions(ImageProcessor):
             input_features[key] = tf.image.resize_with_crop_or_pad(input_features[key],
                                                                    target_width=self.image_cols,
                                                                    target_height=self.image_rows)
-
         return input_features
 
 
