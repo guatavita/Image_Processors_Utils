@@ -152,11 +152,9 @@ class Random_Left_Right_flip(ImageProcessor):
 
     def pre_process(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
-
-        random_var = tf.random.uniform([1], minval=0, maxval=2, dtype=tf.dtypes.int32)
-        if random_var == 1:
-            for key in self.image_keys:
-                input_features[key] = tf.image.flip_left_right(input_features[key])
+        do_aug = tf.random.uniform([]) > 0.5
+        for key in self.image_keys:
+            input_features[key] = tf.cond(do_aug, lambda: tf.image.flip_left_right(input_features[key]), lambda: input_features[key])
 
         return input_features
 
@@ -166,11 +164,9 @@ class Random_Up_Down_flip(ImageProcessor):
 
     def pre_process(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
-        random_var = tf.random.uniform([1], minval=0, maxval=2, dtype=tf.dtypes.int32)
-        if random_var == 1:
-            for key in self.image_keys:
-                input_features[key] = tf.image.flip_up_down(input_features[key])
-
+        do_aug = tf.random.uniform([]) > 0.5
+        for key in self.image_keys:
+            input_features[key] = tf.cond(do_aug, lambda: tf.image.flip_up_down(input_features[key]), lambda: input_features[key])
         return input_features
 
 
