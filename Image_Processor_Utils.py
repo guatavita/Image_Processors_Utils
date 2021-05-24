@@ -17,6 +17,23 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
+class Remove_Annotations(ImageProcessor):
+    def __init__(self, keep_annotation_id=[1, 2, 3, 4, 5, 6]):
+        self.keep_annotation_id = keep_annotation_id
+
+    def pre_process(self, input_features):
+
+        if len(input_features['annotation'].shape) == 3:
+            annotation_handle = input_features['annotation']
+            output = np.zeros(annotation_handle.shape, annotation_handle.dtype)
+            new_id = 1
+            for i in range(1, np.max(annotation_handle) + 1):
+                if i not in self.keep_annotation_id:
+                    continue
+                output[annotation_handle == i] = new_id
+                new_id += 1
+            input_features['annotation'] = output
+        return input_features
 
 class Repeat_Channel_Per_Key(ImageProcessor):
     def __init__(self, axis=-1, repeats=3, image_keys=('image',),):
