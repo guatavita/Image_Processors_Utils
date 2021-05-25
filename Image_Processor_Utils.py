@@ -21,7 +21,7 @@ class Remove_Annotations(ImageProcessor):
     def __init__(self, keep_annotation_id=[1, 2, 3, 4, 5, 6]):
         self.keep_annotation_id = keep_annotation_id
 
-    def parse(self, input_features):
+    def pre_process(self, input_features):
 
         if len(input_features['annotation'].shape) == 3:
             annotation_handle = input_features['annotation']
