@@ -21,7 +21,7 @@ class Remove_Annotations(ImageProcessor):
     def __init__(self, keep_annotation_id=[1, 2, 3, 4, 5, 6]):
         self.keep_annotation_id = keep_annotation_id
 
-    def pre_process(self, input_features):
+    def parse(self, input_features):
 
         if len(input_features['annotation'].shape) == 3:
             annotation_handle = input_features['annotation']
@@ -45,7 +45,7 @@ class Repeat_Channel_Per_Key(ImageProcessor):
         self.repeats = repeats
         self.image_keys = image_keys
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         for key in self.image_keys:
             input_features[key] = tf.repeat(input_features[key], axis=self.axis, repeats=self.repeats)
 
@@ -57,7 +57,7 @@ class Expand_Dimensions_Per_Key(ImageProcessor):
         self.axis = axis
         self.image_keys = image_keys
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         for key in self.image_keys:
             input_features[key] = tf.expand_dims(input_features[key], axis=self.axis)
         return input_features
@@ -71,7 +71,7 @@ class Ensure_Image_Key_Proportions(ImageProcessor):
         self.image_keys = image_keys
         self.interp = interp
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
 
         for key, method in zip(self.image_keys, self.interp):
@@ -93,7 +93,7 @@ class Per_Image_Z_Normalization(ImageProcessor):
         self.image_keys = image_keys
         self.dtypes = dtypes
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         for key, dtype in zip(self.image_keys, self.dtypes):
             image = tf.cast(input_features[key], dtype='float32')
@@ -112,7 +112,7 @@ class Per_Image_MinMax_Normalization(ImageProcessor):
         self.image_keys = image_keys
         self.threshold_value = threshold_value
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
             image = input_features[key]
@@ -150,7 +150,7 @@ class Random_Crop_and_Resize(ImageProcessor):
         self.interp = interp
         self.preserve_aspect_ratio = preserve_aspect_ratio
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         random_index = np.random.randint(0, len(self.scales))
         scale = self.scales[random_index]
@@ -167,7 +167,7 @@ class Random_Left_Right_flip(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
         self.image_keys = image_keys
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         do_aug = tf.random.uniform([]) > 0.5
         for key in self.image_keys:
@@ -179,7 +179,7 @@ class Random_Up_Down_flip(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
         self.image_keys = image_keys
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         do_aug = tf.random.uniform([]) > 0.5
         for key in self.image_keys:
@@ -198,7 +198,7 @@ class Random_Rotation(ImageProcessor):
         self.interp = interp
         self.angle = angle
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         angles = tf.random.uniform(shape=[], minval=-self.angle, maxval=self.angle)
         for key, method in zip(self.image_keys, self.interp):
@@ -216,7 +216,7 @@ class Random_Translation(ImageProcessor):
         self.translation_y = translation_y
         self.dtypes = dtypes
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         tx = tf.random.uniform(shape=[], minval=-self.translation_x, maxval=self.translation_x)
         ty = tf.random.uniform(shape=[], minval=-self.translation_y, maxval=self.translation_y)
@@ -235,7 +235,7 @@ class Central_Crop_Img(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
         self.image_keys = image_keys
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
             input_features[key] = tf.image.central_crop(image=input_features[key], central_fraction=0.5)
@@ -250,7 +250,7 @@ class Binarize_And_Remove_Unconnected(ImageProcessor):
         self.image_keys = image_keys
         self.dtypes = dtypes
 
-    def pre_process(self, input_features, *args, **kwargs):
+    def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         for key, dtype in zip(self.image_keys, self.dtypes):
             image = tf.cast(input_features[key], dtype='float32')
