@@ -36,6 +36,31 @@ class Remove_Annotations(ImageProcessor):
         return input_features
 
 
+class Per_Patient_ZNorm(ImageProcessor):
+
+    def __init__(self, image_keys=('image',), dtypes=('float16',)):
+        self.image_keys = image_keys
+        self.dtypes = dtypes
+
+    def pre_process(self, input_features):
+        input_features['mean'] = np.mean(input_features['image'][input_features['annotation']>0])
+        input_features['std'] = np.std(input_features['image'][input_features['annotation']>0])
+        return input_features
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys+('mean', 'std',))
+        for key, dtype in zip(self.image_keys, self.dtypes):
+            image = tf.cast(input_features[key], dtype='float32')
+            image = tf.math.divide(
+                tf.math.multiply(
+                    image,
+                    input_features['mean']
+                ),
+                input_features['std']
+            )
+            input_features[key] = tf.cast(image, dtype=dtype)
+        return input_features
+
 class Repeat_Channel_Per_Key(ImageProcessor):
     def __init__(self, axis=-1, repeats=3, image_keys=('image',), ):
         '''
@@ -194,7 +219,7 @@ class Random_Up_Down_flip(ImageProcessor):
 
 class Random_Rotation(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'), angle=0.25,
-                 filling=('nearest', 'constant')):
+                 dtypes=('float16', 'float16'), filling=('nearest', 'constant')):
         '''
         :param image_keys:
         :param interp:
@@ -203,15 +228,18 @@ class Random_Rotation(ImageProcessor):
         self.image_keys = image_keys
         self.interp = interp
         self.angle = angle
+        self.dtypes = dtypes
         self.filling = filling
 
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         angles = tf.random.uniform(shape=[], minval=-self.angle, maxval=self.angle)
-        for key, interp, filling in zip(self.image_keys, self.interp, self.filling):
-            input_features[key] = tfa.image.rotate(images=input_features[key], angles=angles,
-                                                   interpolation=interp, fill_mode=filling,
-                                                   fill_value=tf.math.reduce_min(input_features[key]))
+        for key, interp, dtype, filling in zip(self.image_keys, self.interp, self.dtypes, self.filling):
+            images = tf.cast(input_features[key], dtype='float32')
+            images = tfa.image.rotate(images=images, angles=angles,
+                                      interpolation=interp, fill_mode=filling,
+                                      fill_value=tf.math.reduce_min(images))
+            input_features[key] = tf.cast(images, dtype=dtype)
 
         return input_features
 
@@ -231,7 +259,7 @@ class Random_Translation(ImageProcessor):
         tx = tf.random.uniform(shape=[], minval=-self.translation_x, maxval=self.translation_x)
         ty = tf.random.uniform(shape=[], minval=-self.translation_y, maxval=self.translation_y)
         for key, interp, dtype, filling in zip(self.image_keys, self.interp, self.dtypes, self.filling):
-            # for some reasons this function needs float32 input
+            # for fill_value and tf.math.reduce_min needs float32 input
             images = tf.cast(input_features[key], dtype='float32')
             images = tfa.image.translate(images=images, translations=[tx, ty],
                                          interpolation=interp, fill_mode=filling,
