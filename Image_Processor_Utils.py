@@ -52,7 +52,7 @@ class Per_Patient_ZNorm(ImageProcessor):
         for key, dtype in zip(self.image_keys, self.dtypes):
             image = tf.cast(input_features[key], dtype='float32')
             image = tf.math.divide(
-                tf.math.multiply(
+                tf.math.subtract(
                     image,
                     input_features['mean']
                 ),
