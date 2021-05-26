@@ -58,6 +58,8 @@ class Per_Patient_ZNorm(ImageProcessor):
                 ),
                 input_features['std']
             )
+            image[image>3.55] = 3.55
+            image[image<-3.55] = -3.55
             input_features[key] = tf.cast(image, dtype=dtype)
         return input_features
 
