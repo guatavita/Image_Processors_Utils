@@ -35,8 +35,9 @@ class Remove_Annotations(ImageProcessor):
             input_features['annotation'] = output
         return input_features
 
+
 class Repeat_Channel_Per_Key(ImageProcessor):
-    def __init__(self, axis=-1, repeats=3, image_keys=('image',),):
+    def __init__(self, axis=-1, repeats=3, image_keys=('image',), ):
         '''
         :param axis: axis to expand
         :param repeats: number of repeats
@@ -61,6 +62,7 @@ class Expand_Dimensions_Per_Key(ImageProcessor):
         for key in self.image_keys:
             input_features[key] = tf.expand_dims(input_features[key], axis=self.axis)
         return input_features
+
 
 class Ensure_Image_Key_Proportions(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512, preserve_aspect_ratio=False, image_keys=('image', 'annotation'),
@@ -171,9 +173,11 @@ class Random_Left_Right_flip(ImageProcessor):
         _check_keys_(input_features, self.image_keys)
         do_aug = tf.random.uniform([]) > 0.5
         for key in self.image_keys:
-            input_features[key] = tf.cond(do_aug, lambda: tf.image.flip_left_right(input_features[key]), lambda: input_features[key])
+            input_features[key] = tf.cond(do_aug, lambda: tf.image.flip_left_right(input_features[key]),
+                                          lambda: input_features[key])
 
         return input_features
+
 
 class Random_Up_Down_flip(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation')):
@@ -183,12 +187,14 @@ class Random_Up_Down_flip(ImageProcessor):
         _check_keys_(input_features, self.image_keys)
         do_aug = tf.random.uniform([]) > 0.5
         for key in self.image_keys:
-            input_features[key] = tf.cond(do_aug, lambda: tf.image.flip_up_down(input_features[key]), lambda: input_features[key])
+            input_features[key] = tf.cond(do_aug, lambda: tf.image.flip_up_down(input_features[key]),
+                                          lambda: input_features[key])
         return input_features
 
 
 class Random_Rotation(ImageProcessor):
-    def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'), angle=0.25, filling=('nearest', 'constant')):
+    def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'), angle=0.25,
+                 filling=('nearest', 'constant')):
         '''
         :param image_keys:
         :param interp:
