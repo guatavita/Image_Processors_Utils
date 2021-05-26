@@ -188,7 +188,7 @@ class Random_Up_Down_flip(ImageProcessor):
 
 
 class Random_Rotation(ImageProcessor):
-    def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'), angle=0.25):
+    def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'), angle=0.25, filling=('nearest', 'constant')):
         '''
         :param image_keys:
         :param interp:
@@ -197,34 +197,38 @@ class Random_Rotation(ImageProcessor):
         self.image_keys = image_keys
         self.interp = interp
         self.angle = angle
+        self.filling = filling
 
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         angles = tf.random.uniform(shape=[], minval=-self.angle, maxval=self.angle)
-        for key, method in zip(self.image_keys, self.interp):
-            input_features[key] = tfa.image.rotate(images=input_features[key], angles=angles, interpolation=method)
+        for key, interp, filling in zip(self.image_keys, self.interp, self.filling):
+            input_features[key] = tfa.image.rotate(images=input_features[key], angles=angles,
+                                                   interpolation=interp, fill_mode=filling,
+                                                   fill_value=tf.math.reduce_min(input_features[key]))
 
         return input_features
 
 
 class Random_Translation(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'),
-                 translation_x=0.0, translation_y=0.0, dtypes=('float16', 'float16')):
+                 translation_x=0.0, translation_y=0.0, dtypes=('float16', 'float16'), filling=('nearest', 'constant')):
         self.image_keys = image_keys
         self.interp = interp
         self.translation_x = translation_x
         self.translation_y = translation_y
         self.dtypes = dtypes
+        self.filling = filling
 
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         tx = tf.random.uniform(shape=[], minval=-self.translation_x, maxval=self.translation_x)
         ty = tf.random.uniform(shape=[], minval=-self.translation_y, maxval=self.translation_y)
-        for key, method, dtype in zip(self.image_keys, self.interp, self.dtypes):
+        for key, interp, dtype, filling in zip(self.image_keys, self.interp, self.dtypes, self.filling):
             # for some reasons this function needs float32 input
             images = tf.cast(input_features[key], dtype='float32')
             images = tfa.image.translate(images=images, translations=[tx, ty],
-                                         interpolation=method, fill_mode='constant',
+                                         interpolation=interp, fill_mode=filling,
                                          fill_value=tf.math.reduce_min(images))
             input_features[key] = tf.cast(images, dtype=dtype)
 
@@ -238,7 +242,7 @@ class Central_Crop_Img(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
-            input_features[key] = tf.image.central_crop(image=input_features[key], central_fraction=0.5)
+            input_features[key] = tf.image.central_crop(image=input_features[key], central_fraction=0.8)
         return input_features
 
 
