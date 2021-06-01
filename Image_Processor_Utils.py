@@ -38,9 +38,11 @@ class Remove_Annotations(ImageProcessor):
 
 class Per_Patient_ZNorm(ImageProcessor):
 
-    def __init__(self, image_keys=('image',), dtypes=('float16',)):
+    def __init__(self, image_keys=('image',), dtypes=('float16',), lower_bound=-3.55, upper_bound=3.55):
         self.image_keys = image_keys
         self.dtypes = dtypes
+        self.lower_bound = lower_bound
+        self.upper_bound = upper_bound
 
     def pre_process(self, input_features):
         input_features['mean'] = np.mean(input_features['image'][input_features['annotation']>0])
@@ -58,8 +60,10 @@ class Per_Patient_ZNorm(ImageProcessor):
                 ),
                 input_features['std']
             )
-            image[image>3.55] = 3.55
-            image[image<-3.55] = -3.55
+            image = tf.where(image > tf.cast(self.upper_bound, dtype=image.dtype),
+                                           tf.cast(self.upper_bound, dtype=image.dtype), image)
+            image = tf.where(image < tf.cast(self.lower_bound, dtype=image.dtype),
+                                           tf.cast(self.lower_bound, dtype=image.dtype), image)
             input_features[key] = tf.cast(image, dtype=dtype)
         return input_features
 
