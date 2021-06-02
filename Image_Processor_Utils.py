@@ -35,6 +35,23 @@ class Remove_Annotations(ImageProcessor):
             input_features['annotation'] = output
         return input_features
 
+class Combine_Annotations_To_Mask(ImageProcessor):
+    def __init__(self, annotation_input=[1,2], to_annotation=1):
+        self.annotation_input = annotation_input
+        self.to_annotation = to_annotation
+
+    def pre_process(self, input_features):
+        annotation = input_features['annotation']
+        assert len(annotation.shape) == 3 or len(
+            annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
+        if len(annotation.shape) == 3:
+            for val in self.annotation_input:
+                annotation[annotation == val] = self.to_annotation
+        elif len(annotation.shape) == 4:
+            annotation[..., self.to_annotation] += annotation[..., self.annotation_input]
+            del annotation[..., self.annotation_input]
+        input_features['mask'] = annotation
+        return input_features
 
 class Per_Patient_ZNorm(ImageProcessor):
 
