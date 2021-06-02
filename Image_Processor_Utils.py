@@ -1,11 +1,12 @@
-import os
+import os, copy
+from _collections import OrderedDict
+
 import tensorflow as tf
 from tensorflow.keras import backend as K
 import tensorflow_addons as tfa
 from tensorflow_addons.image import transform_ops
 
 from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.TFDataSetProcessors import *
-
 
 def _check_keys_(input_features, keys):
     if type(keys) is list or type(keys) is tuple:
@@ -41,7 +42,7 @@ class Combine_Annotations_To_Mask(ImageProcessor):
         self.to_annotation = to_annotation
 
     def pre_process(self, input_features):
-        annotation = input_features['annotation']
+        annotation = copy.deepcopy(input_features['annotation'])
         assert len(annotation.shape) == 3 or len(
             annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
         if len(annotation.shape) == 3:
@@ -353,3 +354,79 @@ class Binarize_And_Remove_Unconnected(ImageProcessor):
             input_features[key] = tf.cast(image, dtype=dtype)
 
         return input_features
+
+
+class Distribute_into_3D_with_Mask(ImageProcessor):
+    def __init__(self, min_z=0, max_z=np.inf, max_rows=np.inf, max_cols=np.inf, mirror_small_bits=True,
+                 chop_ends=False, desired_val=1):
+        self.max_z = max_z
+        self.min_z = min_z
+        self.max_rows, self.max_cols = max_rows, max_cols
+        self.mirror_small_bits = mirror_small_bits
+        self.chop_ends = chop_ends
+        self.desired_val = desired_val
+
+    def pre_process(self, input_features):
+        out_features = OrderedDict()
+        start_chop = 0
+        image_base = input_features['image']
+        annotation_base = input_features['annotation']
+        mask_base = input_features['mask']
+        image_path = input_features['image_path']
+        z_images_base, rows, cols = image_base.shape
+        if self.max_rows != np.inf:
+            rows = min([rows, self.max_rows])
+        if self.max_cols != np.inf:
+            cols = min([cols, self.max_cols])
+        image_base, annotation_base, mask_base = image_base[:, :rows, :cols], annotation_base[:, :rows, :cols], mask_base[:, :rows, :cols]
+        step = min([self.max_z, z_images_base])
+        for index in range(z_images_base // step + 1):
+            image_features = OrderedDict()
+            if start_chop >= z_images_base:
+                continue
+            image = image_base[start_chop:start_chop + step, ...]
+            annotation = annotation_base[start_chop:start_chop + step, ...]
+            mask = mask_base[start_chop:start_chop + step, ...]
+            start_chop += step
+            if image.shape[0] < max([step, self.min_z]):
+                if self.mirror_small_bits:
+                    while image.shape[0] < max([step, self.min_z]):
+                        mirror_image = np.flip(image, axis=0)
+                        mirror_annotation = np.flip(annotation, axis=0)
+                        mirror_mask = np.flip(mask, axis=0)
+                        image = np.concatenate([image, mirror_image], axis=0)
+                        annotation = np.concatenate([annotation, mirror_annotation], axis=0)
+                        mask = np.concatenate([mask, mirror_mask], axis=0)
+                    image = image[:max([step, self.min_z])]
+                    annotation = annotation[:max([step, self.min_z])]
+                    mask = mask[:max([step, self.min_z])]
+                elif self.chop_ends:
+                    continue
+            start, stop = _get_start_stop_(annotation, extension=0, desired_val=self.desired_val)
+            if start == -1 or stop == -1:
+                continue  # no annotation here
+            image_features['image_path'] = image_path
+            image_features['image'] = image
+            image_features['annotation'] = annotation
+            image_features['mask'] = mask
+            image_features['start'] = start
+            image_features['stop'] = stop
+            for key in input_features.keys():
+                if key not in image_features.keys():
+                    image_features[key] = input_features[key]  # Pass along all other keys.. be careful
+            out_features['Image_{}'.format(index)] = image_features
+        input_features = out_features
+        return input_features
+
+
+def _get_start_stop_(annotation, extension=np.inf, desired_val=1):
+    if len(annotation.shape) > 3:
+        annotation = np.argmax(annotation, axis=-1)
+    non_zero_values = np.where(np.max(annotation, axis=(1, 2)) >= desired_val)[0]
+    start, stop = -1, -1
+    if non_zero_values.any():
+        start = int(non_zero_values[0])
+        stop = int(non_zero_values[-1])
+        start = max([start - extension, 0])
+        stop = min([stop + extension, annotation.shape[0]])
+    return start, stop
