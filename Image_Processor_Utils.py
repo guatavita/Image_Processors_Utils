@@ -85,6 +85,18 @@ class Per_Patient_ZNorm(ImageProcessor):
             input_features[key] = tf.cast(image, dtype=dtype)
         return input_features
 
+
+class Expand_Dimensions_Per_Key(ImageProcessor):
+    def __init__(self, axis=-1, image_keys=('image',),):
+        self.axis = axis
+        self.image_keys = image_keys
+
+    def parse(self, image_features, *args, **kwargs):
+        for key in self.image_keys:
+            image_features[key] = tf.expand_dims(image_features[key], axis=self.axis)
+        return image_features
+
+
 class Repeat_Channel_Per_Key(ImageProcessor):
     def __init__(self, axis=-1, repeats=3, image_keys=('image',), ):
         '''
