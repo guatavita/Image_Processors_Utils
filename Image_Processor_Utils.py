@@ -412,7 +412,7 @@ class Random_Rotation(ImageProcessor):
 
 
 class Threshold_Multiclass(ImageProcessor):
-    def __init__(self, threshold={}, connectivity={}, prediction_keys=('prediction')):
+    def __init__(self, threshold={}, connectivity={}, prediction_keys=('prediction',)):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
