@@ -26,6 +26,71 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
+
+class Normalize_Images(ImageProcessor):
+    def __init__(self, keys=('image',), mean_values=(0,), std_values=(1,),):
+        """
+        :param keys: tuple of image keys
+        :param mean_values: tuple of mean values
+        :param std_values: tuple of standard deviations
+        """
+        self.keys = keys
+        self.mean_values = mean_values
+        self.std_values = std_values
+
+    def parse(self, image_features):
+        _check_keys_(image_features, self.keys)
+        for key, mean_val, std_val in zip(self.keys, self.mean_values, self.std_values):
+            mean_val = tf.constant(mean_val, dtype=image_features[key].dtype)
+            std_val = tf.constant(std_val, dtype=image_features[key].dtype)
+            image_features[key] = (image_features[key] - mean_val) / std_val
+        return image_features
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.keys)
+        for key, mean_val, std_val in zip(self.keys, self.mean_values, self.std_values):
+            image = input_features[key]
+            image = (image - mean_val) / std_val
+            input_features[key] = image
+        return input_features
+
+class Threshold_Images(ImageProcessor):
+    def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
+        """
+        :param keys: tuple of image keys
+        :param lower_bounds: tuple of bounds
+        :param upper_bounds: tuple of bounds
+        :param divides: boolean if you want to divide
+        """
+        self.lower_bounds = lower_bounds
+        self.upper_bounds = upper_bounds
+        self.keys = keys
+        self.divides = divides
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(image_features, self.keys)
+        for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
+            image_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
+                                           tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
+            image_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
+                                           tf.cast(lower_bound, dtype=image_features[key].dtype), image_features[key])
+            if divide:
+                image_features[key] = tf.divide(image_features[key], tf.cast(tf.subtract(upper_bound, lower_bound),
+                                                                             dtype=image_features[key].dtype))
+        return image_features
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.keys)
+        for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
+            image = input_features[key]
+            image[image < lower_bound] = lower_bound
+            image[image > upper_bound] = upper_bound
+            if divide:
+                image = image / (upper_bound - lower_bound)
+            input_features[key] = image
+
+        return input_features
+
 class Postprocess_Pancreas(ImageProcessor):
     def __init__(self, max_comp=2, dist=95, radius=1, prediction_keys=('prediction',)):
         self.max_comp = max_comp
