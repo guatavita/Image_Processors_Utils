@@ -27,10 +27,11 @@ def _check_keys_(input_features, keys):
 
 
 class Postprocess_Pancreas(ImageProcessor):
-    def __init__(self, max_comp=2, dist=95, radius=1):
+    def __init__(self, max_comp=2, dist=95, radius=1, prediction_keys=('prediction',)):
         self.max_comp = max_comp
         self.dist = dist
         self.radius = radius
+        self.prediction_keys = prediction_keys
 
     def compute_binary_morphology(self, input_img, radius=1, morph_type='closing'):
 
