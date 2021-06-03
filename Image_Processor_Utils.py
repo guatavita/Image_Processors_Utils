@@ -6,7 +6,14 @@ from tensorflow.keras import backend as K
 import tensorflow_addons as tfa
 from tensorflow_addons.image import transform_ops
 
+import SimpleITK as sitk
+from skimage import morphology, measure
+from scipy.spatial import distance
+
 from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.TFDataSetProcessors import *
+from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.MakeTFRecordProcessors import \
+    remove_non_liver
+
 
 def _check_keys_(input_features, keys):
     if type(keys) is list or type(keys) is tuple:
@@ -16,6 +23,127 @@ def _check_keys_(input_features, keys):
     else:
         assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
                                               '{} was not found'.format(keys)
+
+
+class Postprocess_Pancreas(ImageProcessor):
+    def __init__(self, max_comp=2, dist=95, radius=1):
+        self.max_comp = max_comp
+        self.dist = dist
+        self.radius = radius
+
+    def compute_binary_morphology(self, input_img, radius=1, morph_type='closing'):
+
+        for index in range(1, input_img.shape[-1]):
+
+            temp_img = input_img[..., index]
+
+            if type(temp_img) is np.ndarray:
+                temp_img = sitk.GetImageFromArray(temp_img.astype(np.uint8))
+
+            cast_filter = sitk.CastImageFilter()
+            cast_filter.SetNumberOfThreads(0)
+            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+            temp_img = cast_filter.Execute(temp_img)
+
+            binary_erode_filter = sitk.BinaryErodeImageFilter()
+            binary_erode_filter.SetNumberOfThreads(0)
+            binary_erode_filter.SetKernelRadius(radius)
+            binary_dilate_filter = sitk.BinaryDilateImageFilter()
+            binary_dilate_filter.SetNumberOfThreads(0)
+            binary_dilate_filter.SetKernelRadius(radius)
+
+            if morph_type == 'closing':
+                temp_img = binary_dilate_filter.Execute(temp_img)
+                temp_img = binary_erode_filter.Execute(temp_img)
+            elif morph_type == 'opening':
+                temp_img = binary_dilate_filter.Execute(temp_img)
+                temp_img = binary_erode_filter.Execute(temp_img)
+            else:
+                raise ValueError("Type {} is not supported".format(morph_type))
+
+            input_img[..., index] = sitk.GetArrayFromImage(temp_img).astype(dtype=np.uint8)
+
+        return input_img
+
+    def compute_centroid(self, annotation):
+        '''
+        :param annotation: A binary image of shape [# images, # rows, # cols, channels]
+        :return: index of centroid
+        '''
+        shape = annotation.shape
+        indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
+        index_slice = int(np.mean(indexes))
+        indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
+        index_row = int(np.mean(indexes))
+        indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
+        index_col = int(np.mean(indexes))
+        return (index_slice, index_row, index_col)
+
+    def extract_main_component(self, nparray, dist=50, max_comp=2):
+
+        # TODO create a dictionnary of the volume per label to filter the keep_id with max_comp
+        for index in range(1, nparray.shape[-1]):
+
+            temp_img = nparray[..., index]
+
+            labels = morphology.label(temp_img, connectivity=3)
+
+            if np.max(labels) > 1:
+                volumes = []
+                max_val = 0
+
+                # get maximum volume
+                for i in range(1, labels.max() + 1):
+                    new_volume = labels[labels == i].shape[0]
+                    volumes.append(new_volume)
+                    if new_volume == max(volumes):
+                        max_val = i
+
+                keep_values = []
+                keep_values.append(max_val)
+
+                ref_volume = copy.deepcopy(labels)
+                ref_volume[ref_volume != max_val] = 0
+                ref_volume[ref_volume > 0] = 1
+                ref_points = measure.marching_cubes_lewiner(ref_volume, step_size=3)[0]
+
+                for i in range(1, labels.max() + 1):
+                    if i == max_val:
+                        continue
+
+                    # compute distance
+                    temp_volume = copy.deepcopy(labels)
+                    temp_volume[temp_volume != i] = 0
+                    temp_volume[temp_volume > 0] = 1
+
+                    try:
+                        temp_points = measure.marching_cubes_lewiner(temp_volume, step_size=3)[0]
+                    except:
+                        continue
+
+                    euclidean_dist = []
+                    for ref_point in ref_points:
+                        distances = [distance.euclidean(ref_point, temp_point) for temp_point in temp_points]
+                        euclidean_dist.append(min(distances))
+
+                    if min(euclidean_dist) <= dist:
+                        keep_values.append(i)
+
+                temp_img = np.zeros(labels.shape)
+                for values in keep_values:
+                    temp_img[labels == values] = 1
+
+            nparray[..., index] = temp_img
+
+        return nparray
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.prediction_keys)
+        for key in self.prediction_keys:
+            pred = input_features[key]
+            opened_img = self.compute_binary_morphology(input_img=pred, radius=1, morph_type='closing')
+            pred = self.extract_main_component(nparray=opened_img, dist=95, max_comp=2)
+        return input_features
 
 
 class Remove_Annotations(ImageProcessor):
@@ -36,8 +164,9 @@ class Remove_Annotations(ImageProcessor):
             input_features['annotation'] = output
         return input_features
 
+
 class Combine_Annotations_To_Mask(ImageProcessor):
-    def __init__(self, annotation_input=[1,2], to_annotation=1):
+    def __init__(self, annotation_input=[1, 2], to_annotation=1):
         self.annotation_input = annotation_input
         self.to_annotation = to_annotation
 
@@ -54,6 +183,7 @@ class Combine_Annotations_To_Mask(ImageProcessor):
         input_features['mask'] = annotation
         return input_features
 
+
 class Per_Patient_ZNorm(ImageProcessor):
 
     def __init__(self, image_keys=('image',), dtypes=('float16',), lower_bound=-3.55, upper_bound=3.55):
@@ -63,12 +193,12 @@ class Per_Patient_ZNorm(ImageProcessor):
         self.upper_bound = upper_bound
 
     def pre_process(self, input_features):
-        input_features['mean'] = np.mean(input_features['image'][input_features['annotation']>0])
-        input_features['std'] = np.std(input_features['image'][input_features['annotation']>0])
+        input_features['mean'] = np.mean(input_features['image'][input_features['annotation'] > 0])
+        input_features['std'] = np.std(input_features['image'][input_features['annotation'] > 0])
         return input_features
 
     def parse(self, input_features, *args, **kwargs):
-        _check_keys_(input_features, self.image_keys+('mean', 'std',))
+        _check_keys_(input_features, self.image_keys + ('mean', 'std',))
         for key, dtype in zip(self.image_keys, self.dtypes):
             image = tf.cast(input_features[key], dtype='float32')
             image = tf.math.divide(
@@ -79,15 +209,15 @@ class Per_Patient_ZNorm(ImageProcessor):
                 input_features['std']
             )
             image = tf.where(image > tf.cast(self.upper_bound, dtype=image.dtype),
-                                           tf.cast(self.upper_bound, dtype=image.dtype), image)
+                             tf.cast(self.upper_bound, dtype=image.dtype), image)
             image = tf.where(image < tf.cast(self.lower_bound, dtype=image.dtype),
-                                           tf.cast(self.lower_bound, dtype=image.dtype), image)
+                             tf.cast(self.lower_bound, dtype=image.dtype), image)
             input_features[key] = tf.cast(image, dtype=dtype)
         return input_features
 
 
 class Expand_Dimensions_Per_Key(ImageProcessor):
-    def __init__(self, axis=-1, image_keys=('image',),):
+    def __init__(self, axis=-1, image_keys=('image',), ):
         self.axis = axis
         self.image_keys = image_keys
 
@@ -280,6 +410,26 @@ class Random_Rotation(ImageProcessor):
         return input_features
 
 
+class Threshold_Multiclass(ImageProcessor):
+    def __init__(self, threshold={}, connectivity={}, prediction_keys=('prediction')):
+        self.threshold = threshold
+        self.connectivity = connectivity
+        self.prediction_keys = prediction_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.prediction_keys)
+        for key in self.prediction_keys:
+            pred = input_features[key]
+            for class_id in range(1, pred.shape[-1]):  # ignore the first class as it is background
+                threshold_val = self.threshold.get(str(class_id))
+                connectivity_val = self.connectivity.get(str(class_id))
+                if threshold_val != 0.0 and isinstance(threshold_val, (int, float)) and isinstance(connectivity_val,
+                                                                                                   bool):
+                    pred[..., class_id] = remove_non_liver(pred[..., class_id], threshold=threshold_val,
+                                                           do_3D=connectivity_val)
+        return input_features
+
+
 class Random_Translation(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'),
                  translation_x=0.0, translation_y=0.0, dtypes=('float16', 'float16'), filling=('nearest', 'constant')):
@@ -390,7 +540,8 @@ class Distribute_into_3D_with_Mask(ImageProcessor):
             rows = min([rows, self.max_rows])
         if self.max_cols != np.inf:
             cols = min([cols, self.max_cols])
-        image_base, annotation_base, mask_base = image_base[:, :rows, :cols], annotation_base[:, :rows, :cols], mask_base[:, :rows, :cols]
+        image_base, annotation_base, mask_base = image_base[:, :rows, :cols], annotation_base[:, :rows,
+                                                                              :cols], mask_base[:, :rows, :cols]
         step = min([self.max_z, z_images_base])
         for index in range(z_images_base // step + 1):
             image_features = OrderedDict()
