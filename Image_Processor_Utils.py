@@ -369,6 +369,40 @@ class Per_Image_Z_Normalization(ImageProcessor):
         return input_features
 
 
+class DilateBinary(ImageProcessor):
+    def __init__(self, image_keys=('annotation',), radius=(5,)):
+        self.image_keys = image_keys
+        self.radius = radius
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.image_keys)
+        for key, radius in zip(self.image_keys, self.radius):
+            image = input_features[key]
+            dtype = image.dtype
+            image_handle = sitk.GetImageFromArray(image.astype(dtype=np.uint8))
+            binary_dilate_filter = sitk.BinaryDilateImageFilter()
+            binary_dilate_filter.SetNumberOfThreads(0)
+            binary_dilate_filter.SetKernelRadius(radius)
+            image_handle = binary_dilate_filter.Execute(image_handle)
+            image = sitk.GetArrayFromImage(image_handle).astype(dtype=dtype)
+            input_features[key] = image
+        return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features, self.image_keys)
+        for key, radius in zip(self.image_keys, self.radius):
+            image = input_features[key]
+            dtype = image.dtype
+            image_handle = sitk.GetImageFromArray(image.astype(dtype=np.uint8))
+            binary_erode_filter = sitk.BinaryErodeImageFilter()
+            binary_erode_filter.SetNumberOfThreads(0)
+            binary_erode_filter.SetKernelRadius(radius)
+            image_handle = binary_erode_filter.Execute(image_handle)
+            image = sitk.GetArrayFromImage(image_handle).astype(dtype=dtype)
+            input_features[key] = image
+        return input_features
+
+
 class Per_Image_MinMax_Normalization(ImageProcessor):
     def __init__(self, image_keys=('image',), threshold_value=255.0):
         '''
