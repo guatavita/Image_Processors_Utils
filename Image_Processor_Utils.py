@@ -54,6 +54,9 @@ class Normalize_Images(ImageProcessor):
             input_features[key] = image
         return input_features
 
+    def post_process(self, input_features):
+        return input_features
+
 class Threshold_Images(ImageProcessor):
     def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
         """
@@ -89,6 +92,9 @@ class Threshold_Images(ImageProcessor):
                 image = image / (upper_bound - lower_bound)
             input_features[key] = image
 
+        return input_features
+
+    def post_process(self, input_features):
         return input_features
 
 class Postprocess_Pancreas(ImageProcessor):
