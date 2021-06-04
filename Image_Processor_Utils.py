@@ -370,9 +370,10 @@ class Per_Image_Z_Normalization(ImageProcessor):
 
 
 class DilateBinary(ImageProcessor):
-    def __init__(self, image_keys=('annotation',), radius=(5,)):
+    def __init__(self, image_keys=('annotation',), radius=(5,), run_post_process=False):
         self.image_keys = image_keys
         self.radius = radius
+        self.run_post_process=run_post_process
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.image_keys)
@@ -389,6 +390,9 @@ class DilateBinary(ImageProcessor):
         return input_features
 
     def post_process(self, input_features):
+        if not self.run_post_process:
+            return input_features
+
         _check_keys_(input_features, self.image_keys)
         for key, radius in zip(self.image_keys, self.radius):
             image = input_features[key]
