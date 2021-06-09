@@ -14,7 +14,7 @@ from scipy.spatial import distance
 from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.TFDataSetProcessors import ImageProcessor
 from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.MakeTFRecordProcessors import \
     remove_non_liver
-
+from Base_Deeplearning_Code.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
 
 def _check_keys_(input_features, keys):
     if type(keys) is list or type(keys) is tuple:
@@ -366,6 +366,58 @@ class Per_Image_Z_Normalization(ImageProcessor):
             image = tf.image.per_image_standardization(image=image)
             input_features[key] = tf.cast(image, dtype=dtype)
 
+        return input_features
+
+
+class ImageHistogramEqualizer(ImageProcessor):
+    def __init__(self, image_keys=('image',), dtypes=('float16',), norm_flag=False):
+        '''
+        :param image_keys:
+        '''
+        self.image_keys = image_keys
+        self.dtypes = dtypes
+        self.norm_flag = norm_flag
+
+    def min_max_normalization(self, image):
+        image = tf.math.divide(
+            tf.math.subtract(
+                image,
+                tf.reduce_min(image)
+            ),
+            tf.math.subtract(
+                tf.reduce_max(image),
+                tf.reduce_min(image)
+            )
+        )
+        image = tf.multiply(image, tf.cast(255, image.dtype))
+        return image
+
+    def recover_normalization(self, image, min, max):
+        image = tf.divide(image, tf.cast(255, image.dtype))
+        image = tf.math.multiply(
+            image,
+            tf.math.subtract(
+                max,
+                min
+            ),
+        )
+        image = tf.math.add(
+            image,
+            min
+        )
+        return image
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
+        for key, dtype in zip(self.image_keys, self.dtypes):
+            image = copy.deepcopy(tf.cast(input_features[key], dtype='float32'))
+            if self.norm_flag:
+                min, max = tf.reduce_min(image), tf.reduce_max(image)
+                image = self.min_max_normalization(image)
+            image = tfa.image.equalize(image=image)
+            if self.norm_flag:
+                image = self.recover_normalization(image, min, max)
+            input_features[key] = tf.cast(image, dtype=dtype)
         return input_features
 
 
