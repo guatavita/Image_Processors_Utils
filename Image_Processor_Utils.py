@@ -411,7 +411,7 @@ class ImageHistogramEqualizer(ImageProcessor):
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         for key, dtype in zip(self.image_keys, self.dtypes):
-            image = copy.deepcopy(tf.cast(input_features[key], dtype='float32'))
+            image = tf.cast(input_features[key], dtype='float32')
             if self.recover:
                 min, max = tf.reduce_min(image), tf.reduce_max(image)
             if self.norm_flag:
