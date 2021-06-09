@@ -370,13 +370,14 @@ class Per_Image_Z_Normalization(ImageProcessor):
 
 
 class ImageHistogramEqualizer(ImageProcessor):
-    def __init__(self, image_keys=('image',), dtypes=('float16',), norm_flag=False):
+    def __init__(self, image_keys=('image',), dtypes=('float16',), norm_flag=False, recover=False):
         '''
         :param image_keys:
         '''
         self.image_keys = image_keys
         self.dtypes = dtypes
         self.norm_flag = norm_flag
+        self.recover = recover
 
     def min_max_normalization(self, image):
         image = tf.math.divide(
@@ -411,11 +412,12 @@ class ImageHistogramEqualizer(ImageProcessor):
         _check_keys_(input_features, self.image_keys)
         for key, dtype in zip(self.image_keys, self.dtypes):
             image = copy.deepcopy(tf.cast(input_features[key], dtype='float32'))
-            if self.norm_flag:
+            if self.recover:
                 min, max = tf.reduce_min(image), tf.reduce_max(image)
+            if self.norm_flag:
                 image = self.min_max_normalization(image)
             image = tfa.image.equalize(image=image)
-            if self.norm_flag:
+            if self.recover:
                 image = self.recover_normalization(image, min, max)
             input_features[key] = tf.cast(image, dtype=dtype)
         return input_features
