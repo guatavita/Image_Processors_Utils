@@ -510,7 +510,7 @@ class Normalize_Images(ImageProcessor):
 
 
 class Threshold_Images(ImageProcessor):
-    def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
+    def __init__(self, image_keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
         """
         :param keys: tuple of image keys
         :param lower_bounds: tuple of bounds
@@ -519,12 +519,12 @@ class Threshold_Images(ImageProcessor):
         """
         self.lower_bounds = lower_bounds
         self.upper_bounds = upper_bounds
-        self.keys = keys
+        self.image_keys = image_keys
         self.divides = divides
 
     def parse(self, image_features, *args, **kwargs):
-        _check_keys_(image_features, self.keys)
-        for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
+        _check_keys_(image_features, self.image_keys)
+        for key, lower_bound, upper_bound, divide in zip(self.image_keys, self.lower_bounds, self.upper_bounds, self.divides):
             image_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
                                            tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
             image_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
@@ -535,8 +535,8 @@ class Threshold_Images(ImageProcessor):
         return image_features
 
     def pre_process(self, input_features):
-        _check_keys_(input_features, self.keys)
-        for key, lower_bound, upper_bound, divide in zip(self.keys, self.lower_bounds, self.upper_bounds, self.divides):
+        _check_keys_(input_features, self.image_keys)
+        for key, lower_bound, upper_bound, divide in zip(self.image_keys, self.lower_bounds, self.upper_bounds, self.divides):
             image = input_features[key]
             image[image < lower_bound] = lower_bound
             image[image > upper_bound] = upper_bound
