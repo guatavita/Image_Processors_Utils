@@ -11,11 +11,10 @@ import SimpleITK as sitk
 from skimage import morphology, measure
 from scipy.spatial import distance
 
-from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.TFDataSetProcessors import \
-    ImageProcessor
-from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.MakeTFRecordProcessors import \
-    remove_non_liver
-from Base_Deeplearning_Code.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
+
+class ImageProcessor(object):
+    def parse(self, *args, **kwargs):
+        return args, kwargs
 
 
 def _check_keys_(input_features, keys):
@@ -26,6 +25,72 @@ def _check_keys_(input_features, keys):
     else:
         assert keys in input_features.keys(), 'Make sure the key you are referring to is present in the features, ' \
                                               '{} was not found'.format(keys)
+
+
+def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volume=0.0, max_area=99999.0, min_area=0.0,
+                     do_3D=True, do_2D=False, spacing=None):
+    '''
+    :param annotations: An annotation of shape [Z_images, rows, columns]
+    :param threshold: Threshold of probability from 0.0 to 1.0
+    :param max_volume: Max volume of structure allowed
+    :param min_volume: Minimum volume of structure allowed, in ccs
+    :param max_area: Max volume of structure allowed
+    :param min_area: Minimum volume of structure allowed
+    :param do_3D: Do a 3D removal of structures, only take largest connected structure
+    :param do_2D: Do a 2D removal of structures, only take largest connected structure
+    :param spacing: Spacing of elements, in form of [z_spacing, row_spacing, column_spacing]
+    :return: Masked annotation
+    '''
+    min_volume = min_volume * (10 * 10 * 10)  # cm to mm3
+    annotations = copy.deepcopy(annotations)
+    annotations = np.squeeze(annotations)
+    if not annotations.dtype == 'int':
+        annotations[annotations < threshold] = 0
+        annotations[annotations > 0] = 1
+        annotations = annotations.astype('int')
+    if do_3D:
+        labels = morphology.label(annotations, connectivity=1)
+        if np.max(labels) > 1:
+            area = []
+            max_val = 0
+            for i in range(1, labels.max() + 1):
+                new_area = labels[labels == i].shape[0]
+                if spacing is not None:
+                    volume = np.prod(spacing) * new_area
+                    if volume > max_volume:
+                        continue
+                    elif volume < min_volume:
+                        continue
+                area.append(new_area)
+                if new_area == max(area):
+                    max_val = i
+            labels[labels != max_val] = 0
+            labels[labels > 0] = 1
+            annotations = labels
+    if do_2D:
+        slice_indexes = np.where(np.sum(annotations, axis=(1, 2)) > 0)
+        if slice_indexes:
+            for slice_index in slice_indexes[0]:
+                labels = morphology.label(annotations[slice_index], connectivity=1)
+                if np.max(labels) == 1:
+                    continue
+                area = []
+                max_val = 0
+                for i in range(1, labels.max() + 1):
+                    new_area = labels[labels == i].shape[0]
+                    if spacing is not None:
+                        temp_area = np.prod(spacing[1:]) * new_area / 100
+                        if temp_area > max_area:
+                            continue
+                        elif temp_area < min_area:
+                            continue
+                    area.append(new_area)
+                    if new_area == max(area):
+                        max_val = i
+                labels[labels != max_val] = 0
+                labels[labels > 0] = 1
+                annotations[slice_index] = labels
+    return annotations
 
 
 class Focus_on_CT(ImageProcessor):
