@@ -161,7 +161,7 @@ class Focus_on_CT(ImageProcessor):
             if self.squeeze_flag:
                 rescaled_input_label = np.expand_dims(rescaled_input_label, axis=-1)
             input_features['annotation'] = rescaled_input_label
-        input_features['image'] = images
+        input_features['image'] = rescaled_input_img
         return input_features
 
     def post_process(self, input_features):
@@ -173,7 +173,7 @@ class Focus_on_CT(ImageProcessor):
 
         recovered_pred = self.recover_original_hot(resize_image=pred, original_shape=self.original_shape,
                                                    bb_parameters=self.bb_parameters, final_padding=self.final_padding,
-                                                   interpolator='cubic_label', threshold=0.5)
+                                                   interpolator='cubic_pred', empty_value='zero')
 
         input_features['image'] = recovered_img
         input_features['prediction'] = recovered_pred
@@ -284,6 +284,12 @@ class Focus_on_CT(ImageProcessor):
                     rescaled_temp[rescaled_temp > threshold] = label
                     rescaled_temp[rescaled_temp < label] = 0
                     rescaled_img[idx, :, :, channel][rescaled_temp == label] = label
+        if interpolator is 'cubic_pred':
+            for channel in range(1, unpadded.shape[-1]):
+                temp = copy.deepcopy(unpadded[:, :, :, channel])
+                for idx in range(unpadded.shape[0]):
+                    rescaled_img[idx, :, :, channel] = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
+                                               interpolation=cv2.INTER_CUBIC)
         elif interpolator is 'linear_label':
             for channel in range(1, unpadded.shape[-1]):
                 label = 1
@@ -1095,14 +1101,22 @@ class Threshold_Multiclass(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key in self.prediction_keys:
-            pred = input_features[key]
+            pred = copy.deepcopy(input_features[key])
+            pred = np.squeeze(pred)
             for class_id in range(1, pred.shape[-1]):  # ignore the first class as it is background
                 threshold_val = self.threshold.get(str(class_id))
                 connectivity_val = self.connectivity.get(str(class_id))
-                if threshold_val != 0.0 and isinstance(threshold_val, (int, float)) and isinstance(connectivity_val,
-                                                                                                   bool):
-                    pred[..., class_id] = remove_non_liver(pred[..., class_id], threshold=threshold_val,
-                                                           do_3D=connectivity_val)
+                if threshold_val != 0.0:
+                    pred_id = pred[..., class_id]
+                    if not pred.dtype == 'int':
+                        pred_id[pred_id < threshold_val] = 0
+                        pred_id[pred_id > 0] = 1
+                        pred_id = pred_id.astype('int')
+                    if connectivity_val:
+                        main_component_filter = Remove_Smallest_Structures()
+                        pred_id = main_component_filter.remove_smallest_component(pred_id)
+                    pred[..., class_id] = pred_id
+            input_features[key] = pred
         return input_features
 
 
