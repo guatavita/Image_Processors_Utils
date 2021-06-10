@@ -10,7 +10,7 @@ import numpy as np
 import SimpleITK as sitk
 from skimage import morphology, measure
 from scipy.spatial import distance
-
+import cv2
 
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
@@ -93,6 +93,28 @@ def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volum
     return annotations
 
 
+class Remove_Smallest_Structures(object):
+    def __init__(self):
+        self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.RelabelComponent = sitk.RelabelComponentImageFilter()
+        self.RelabelComponent.SortByObjectSizeOn()
+
+    def remove_smallest_component(self, annotation):
+        if type(annotation) is np.ndarray:
+            annotation_handle = sitk.GetImageFromArray(annotation.astype(np.uint8))
+            convert = True
+
+        label_image = self.Connected_Component_Filter.Execute(
+            sitk.BinaryThreshold(sitk.Cast(annotation_handle, sitk.sitkFloat32), lowerThreshold=0.01,
+                                 upperThreshold=np.inf))
+        label_image = self.RelabelComponent.Execute(label_image)
+        output = sitk.BinaryThreshold(sitk.Cast(label_image, sitk.sitkFloat32), lowerThreshold=0.1, upperThreshold=1.0)
+
+        if convert:
+            output = sitk.GetArrayFromImage(output)
+
+        return output
+
 class Focus_on_CT(ImageProcessor):
     def __init__(self, threshold_value=-250.0, mask_value=1):
         # TODO this class needs to be cleaned
@@ -157,10 +179,47 @@ class Focus_on_CT(ImageProcessor):
         input_features['prediction'] = recovered_pred
         return input_features
 
+    def compute_binary_morphology(self, input_img, radius=1, morph_type='closing'):
+
+        for index in range(1, input_img.shape[-1]):
+
+            temp_img = input_img[..., index]
+
+            if type(temp_img) is np.ndarray:
+                temp_img = sitk.GetImageFromArray(temp_img.astype(np.uint8))
+
+            cast_filter = sitk.CastImageFilter()
+            cast_filter.SetNumberOfThreads(0)
+            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+            temp_img = cast_filter.Execute(temp_img)
+
+            binary_erode_filter = sitk.BinaryErodeImageFilter()
+            binary_erode_filter.SetNumberOfThreads(0)
+            binary_erode_filter.SetKernelRadius(radius)
+            binary_dilate_filter = sitk.BinaryDilateImageFilter()
+            binary_dilate_filter.SetNumberOfThreads(0)
+            binary_dilate_filter.SetKernelRadius(radius)
+
+            if morph_type == 'closing':
+                temp_img = binary_dilate_filter.Execute(temp_img)
+                temp_img = binary_erode_filter.Execute(temp_img)
+            elif morph_type == 'opening':
+                temp_img = binary_dilate_filter.Execute(temp_img)
+                temp_img = binary_erode_filter.Execute(temp_img)
+            else:
+                raise ValueError("Type {} is not supported".format(morph_type))
+
+            input_img[..., index] = sitk.GetArrayFromImage(temp_img).astype(dtype=np.uint8)
+
+        return input_img
+
     def compute_external_mask(self, input_img):
         self.external_mask[input_img > self.threshold_value] = self.mask_value
+        # self.external_mask = self.compute_binary_morphology(input_img=self.external_mask, radius=2, morph_type='opening')
         self.external_mask = morphology.opening(image=self.external_mask, selem=morphology.ball(2))
-        self.external_mask = self.keep_main_component(annotations=self.external_mask)
+        # self.external_mask = self.keep_main_component(annotations=self.external_mask)
+        main_component_filter = Remove_Smallest_Structures()
+        self.external_mask = main_component_filter.remove_smallest_component(self.external_mask)
 
     def recover_original_hot(self, resize_image, original_shape=(191, 512, 512, 13), bb_parameters=[], final_padding=[],
                              interpolator='cubic_label', threshold=0.5, empty_value='min'):
@@ -507,7 +566,6 @@ class Normalize_Images(ImageProcessor):
 
     def post_process(self, input_features):
         return input_features
-
 
 class Threshold_Images(ImageProcessor):
     def __init__(self, image_keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
