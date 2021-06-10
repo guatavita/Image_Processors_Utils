@@ -11,10 +11,12 @@ import SimpleITK as sitk
 from skimage import morphology, measure
 from scipy.spatial import distance
 
-from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.TFDataSetProcessors import ImageProcessor
+from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.TFDataSetProcessors import \
+    ImageProcessor
 from Base_Deeplearning_Code.Data_Generators.Image_Processors_Module.src.Processors.MakeTFRecordProcessors import \
     remove_non_liver
 from Base_Deeplearning_Code.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
+
 
 def _check_keys_(input_features, keys):
     if type(keys) is list or type(keys) is tuple:
@@ -26,9 +28,393 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
+class Focus_on_CT(ImageProcessor):
+    def __init__(self, threshold_value=-250.0, mask_value=1):
+        # TODO this class needs to be cleaned
+        self.threshold_value = threshold_value
+        self.mask_value = mask_value
+        self.bb_parameters = []
+        self.final_padding = []
+        self.original_shape = {}
+        self.squeeze_flag = False
+
+    def pre_process(self, input_features):
+        images = input_features['image']
+        annotations = None
+        if images.dtype != 'float32':
+            images = images.astype('float32')
+
+        if len(images.shape) > 3:
+            images = np.squeeze(images)
+            self.squeeze_flag = True
+
+        self.original_shape = images.shape
+        self.external_mask = np.zeros(images.shape, dtype=np.int16)
+        self.compute_external_mask(input_img=images)
+        self.bb_parameters = self.compute_bounding_box(self.external_mask, padding=2)
+        # nearest to not change the intensity distribution
+        # TODO check final padding
+        rescaled_input_img, self.final_padding = self.crop_resize_pad(input=images,
+                                                                      bb_parameters=self.bb_parameters, image_rows=512,
+                                                                      image_cols=512, interpolator='cubic',
+                                                                      empty_value='air')
+        if self.squeeze_flag:
+            rescaled_input_img = np.expand_dims(rescaled_input_img, axis=-1)
+
+        if annotations != None:
+            if annotations.dtype != 'float32':
+                annotations = annotations.astype('float32')
+            if self.squeeze_flag:
+                annotations = np.squeeze(annotations)
+            rescaled_input_label, self.final_padding = self.crop_resize_pad(input=annotations,
+                                                                            bb_parameters=self.bb_parameters,
+                                                                            image_rows=512,
+                                                                            image_cols=512, interpolator='linear_label',
+                                                                            threshold=0.5)
+            if self.squeeze_flag:
+                rescaled_input_label = np.expand_dims(rescaled_input_label, axis=-1)
+            input_features['annotation'] = rescaled_input_label
+        input_features['image'] = images
+        return input_features
+
+    def post_process(self, input_features):
+        images = input_features['image']
+        pred = input_features['prediction']
+        recovered_img = self.recover_original(resize_image=images, original_shape=self.original_shape,
+                                              bb_parameters=self.bb_parameters, final_padding=self.final_padding,
+                                              interpolator='cubic', empty_value='air')
+
+        recovered_pred = self.recover_original_hot(resize_image=pred, original_shape=self.original_shape,
+                                                   bb_parameters=self.bb_parameters, final_padding=self.final_padding,
+                                                   interpolator='cubic_label', threshold=0.5)
+
+        input_features['image'] = recovered_img
+        input_features['prediction'] = recovered_pred
+        return input_features
+
+    def compute_external_mask(self, input_img):
+        self.external_mask[input_img > self.threshold_value] = self.mask_value
+        self.external_mask = morphology.opening(image=self.external_mask, selem=morphology.ball(2))
+        self.external_mask = self.keep_main_component(annotations=self.external_mask)
+
+    def recover_original_hot(self, resize_image, original_shape=(191, 512, 512, 13), bb_parameters=[], final_padding=[],
+                             interpolator='cubic_label', threshold=0.5, empty_value='min'):
+        '''
+        # nearest creates a "shifting effect"
+        # linear_label works great in general with small dots after recover
+        # cubic_label is 100% recovered but more zig-zaggy
+        :param resize_image:
+        :param original_shape:
+        :param bb_parameters:
+        :param final_padding:
+        :param interpolator:
+        :param threshold:
+        :param empty_value:
+        :return:
+        '''
+        resized_shape = resize_image.shape
+        min_slice, max_slice = final_padding[0][0], resized_shape[0] - final_padding[0][1]
+        min_row, max_row = final_padding[1][0], resized_shape[1] - final_padding[1][1]
+        min_col, max_col = final_padding[2][0], resized_shape[2] - final_padding[2][1]
+        unpadded = resize_image[min_slice:max_slice, min_row:max_row, min_col:max_col]
+
+        bb_shape = (
+            bb_parameters[1] - bb_parameters[0], bb_parameters[3] - bb_parameters[2],
+            bb_parameters[5] - bb_parameters[4])
+        cropped_dimension = np.array(original_shape) - np.array(bb_shape)
+
+        # if unpadded.shape[1] > unpadded.shape[2]:
+        #   updt_image_rows = unpadded.shape[1] - cropped_dimension[1]
+        #   updt_image_cols = int(round(unpadded.shape[2] * (unpadded.shape[1] - cropped_dimension[1]) / unpadded.shape[1]))
+        # elif unpadded.shape[1] < unpadded.shape[2]:
+        #   updt_image_rows = int(round(unpadded.shape[1] * (unpadded.shape[2] - cropped_dimension[2]) / unpadded.shape[2]))
+        #   updt_image_cols = unpadded.shape[2] - cropped_dimension[2]
+        # else:
+        #   updt_image_rows = unpadded.shape[1] - cropped_dimension[1]
+        #   updt_image_cols = unpadded.shape[2] - cropped_dimension[2]
+
+        if unpadded.shape[1] > unpadded.shape[2]:
+            updt_image_rows = original_shape[1] - cropped_dimension[1]
+            updt_image_cols = int(
+                round(unpadded.shape[2] * (original_shape[1] - cropped_dimension[1]) / unpadded.shape[1]))
+        elif unpadded.shape[1] < unpadded.shape[2]:
+            updt_image_rows = int(
+                round(unpadded.shape[1] * (original_shape[2] - cropped_dimension[2]) / unpadded.shape[2]))
+            updt_image_cols = original_shape[2] - cropped_dimension[2]
+        else:
+            updt_image_rows = original_shape[1] - cropped_dimension[1]
+            updt_image_cols = original_shape[2] - cropped_dimension[2]
+
+        target_shape = (unpadded.shape[0], updt_image_rows, updt_image_cols, unpadded.shape[-1])
+        rescaled_img = np.zeros(target_shape, dtype=resize_image.dtype)
+
+        if interpolator is 'cubic_label':
+            for channel in range(1, unpadded.shape[-1]):
+                label = 1
+                temp = copy.deepcopy(unpadded[:, :, :, channel])
+                temp[temp != label] = 0
+                temp[temp > 0] = 1
+                for idx in range(unpadded.shape[0]):
+                    rescaled_temp = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
+                                               interpolation=cv2.INTER_CUBIC)
+                    rescaled_temp[rescaled_temp > threshold] = label
+                    rescaled_temp[rescaled_temp < label] = 0
+                    rescaled_img[idx, :, :, channel][rescaled_temp == label] = label
+        elif interpolator is 'linear_label':
+            for channel in range(1, unpadded.shape[-1]):
+                label = 1
+                temp = copy.deepcopy(unpadded[:, :, :, channel])
+                temp[temp != label] = 0
+                temp[temp > 0] = 1
+                for idx in range(unpadded.shape[0]):
+                    rescaled_temp = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
+                                               interpolation=cv2.INTER_LINEAR)
+                    rescaled_temp[rescaled_temp > threshold] = label
+                    rescaled_temp[rescaled_temp < label] = 0
+                    rescaled_img[idx, :, :, channel][rescaled_temp == label] = label
+        else:
+            print('WARNING: No resize performed as the provided interpolator is not compatible')
+            print('Supporter interpolator: [cubic_label, linear_label]')
+
+        bb_padding = [[bb_parameters[0], original_shape[0] - bb_parameters[1]],
+                      [bb_parameters[2], original_shape[1] - bb_parameters[3]],
+                      [bb_parameters[4], original_shape[2] - bb_parameters[5]],
+                      [0, 0]]
+
+        if empty_value is 'air':
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
+        elif empty_value is 'min':
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=np.min(rescaled_img))
+        elif empty_value is 'zero':
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=0)
+        else:
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
+        return recovered_img
+
+    def recover_original(self, resize_image, original_shape=(191, 512, 512), bb_parameters=[], final_padding=[],
+                         interpolator='linear', threshold=0.5, empty_value='min'):
+        '''
+        # nearest creates a "shifting effect"
+        # linear_label works great in general with small dots after recover
+        # cubic_label is 100% recovered but more zig-zaggy
+        :param resize_image:
+        :param original_shape:
+        :param bb_parameters:
+        :param final_padding:
+        :param interpolator:
+        :param threshold:
+        :param empty_value:
+        :return:
+        '''
+        resized_shape = resize_image.shape
+        min_slice, max_slice = final_padding[0][0], resized_shape[0] - final_padding[0][1]
+        min_row, max_row = final_padding[1][0], resized_shape[1] - final_padding[1][1]
+        min_col, max_col = final_padding[2][0], resized_shape[2] - final_padding[2][1]
+        unpadded = resize_image[min_slice:max_slice, min_row:max_row, min_col:max_col]
+
+        bb_shape = (
+            bb_parameters[1] - bb_parameters[0], bb_parameters[3] - bb_parameters[2],
+            bb_parameters[5] - bb_parameters[4])
+        cropped_dimension = np.array(original_shape) - np.array(bb_shape)
+
+        if unpadded.shape[1] > unpadded.shape[2]:
+            updt_image_rows = original_shape[1] - cropped_dimension[1]
+            updt_image_cols = int(
+                round(unpadded.shape[2] * (original_shape[1] - cropped_dimension[1]) / unpadded.shape[1]))
+        elif unpadded.shape[1] < unpadded.shape[2]:
+            updt_image_rows = int(
+                round(unpadded.shape[1] * (original_shape[2] - cropped_dimension[2]) / unpadded.shape[2]))
+            updt_image_cols = original_shape[2] - cropped_dimension[2]
+        else:
+            updt_image_rows = original_shape[1] - cropped_dimension[1]
+            updt_image_cols = original_shape[2] - cropped_dimension[2]
+
+        target_shape = (unpadded.shape[0], updt_image_rows, updt_image_cols)
+        rescaled_img = np.zeros(target_shape, dtype=resize_image.dtype)
+
+        if interpolator is 'linear':
+            for idx in range(unpadded.shape[0]):
+                rescaled_img[idx, :, :] = cv2.resize(unpadded[idx, :, :], (updt_image_cols, updt_image_rows),
+                                                     interpolation=cv2.INTER_CUBIC)
+        elif interpolator is 'cubic':
+            for idx in range(unpadded.shape[0]):
+                rescaled_img[idx, :, :] = cv2.resize(unpadded[idx, :, :], (updt_image_cols, updt_image_rows),
+                                                     interpolation=cv2.INTER_LINEAR)
+        elif interpolator is 'nearest':
+            for idx in range(unpadded.shape[0]):
+                rescaled_img[idx, :, :] = cv2.resize(unpadded[idx, :, :], (updt_image_cols, updt_image_rows),
+                                                     interpolation=cv2.INTER_NEAREST)
+        elif interpolator is 'cubic_label':
+            for label in range(1, int(unpadded.max()) + 1):
+                temp = copy.deepcopy(unpadded)
+                temp[temp != label] = 0
+                temp[temp > 0] = 1
+                for idx in range(unpadded.shape[0]):
+                    rescaled_temp = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
+                                               interpolation=cv2.INTER_CUBIC)
+                    rescaled_temp[rescaled_temp > threshold] = label
+                    rescaled_temp[rescaled_temp < label] = 0
+                    rescaled_img[idx, :, :][rescaled_temp == label] = label
+        elif interpolator is 'linear_label':
+            for label in range(1, int(unpadded.max()) + 1):
+                temp = copy.deepcopy(unpadded)
+                temp[temp != label] = 0
+                temp[temp > 0] = 1
+                for idx in range(unpadded.shape[0]):
+                    rescaled_temp = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
+                                               interpolation=cv2.INTER_LINEAR)
+                    rescaled_temp[rescaled_temp > threshold] = label
+                    rescaled_temp[rescaled_temp < label] = 0
+                    rescaled_img[idx, :, :][rescaled_temp == label] = label
+        else:
+            print('WARNING: No resize performed as the provided interpolator is not compatible')
+            print('Supporter interpolator: [linear, cubic, nearest]')
+
+        bb_padding = [[bb_parameters[0], original_shape[0] - bb_parameters[1]],
+                      [bb_parameters[2], original_shape[1] - bb_parameters[3]],
+                      [bb_parameters[4], original_shape[2] - bb_parameters[5]]]
+
+        if empty_value is 'air':
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
+        elif empty_value is 'min':
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=np.min(rescaled_img))
+        elif empty_value is 'zero':
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=0)
+        else:
+            recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
+        return recovered_img
+
+    def crop_resize_pad(self, input, bb_parameters=[], image_rows=512, image_cols=512, interpolator='linear',
+                        threshold=0.5, empty_value='min'):
+        '''
+        # nearest creates a "shifting effect"
+        # linear_label works great in general with small dots after recover
+        # cubic_label is 100% recovered but more zig-zaggy
+        :param input:
+        :param bb_parameters:
+        :param image_rows:
+        :param image_cols:
+        :param interpolator:
+        :param threshold:
+        :param empty_value:
+        :return:
+        '''
+
+        input = input[bb_parameters[0]:bb_parameters[1], bb_parameters[2]:bb_parameters[3],
+                bb_parameters[4]:bb_parameters[5]]
+
+        if input.shape[1] > input.shape[2]:
+            updt_image_rows = image_rows
+            updt_image_cols = int(round(input.shape[2] * image_rows / input.shape[1]))
+        elif input.shape[1] < input.shape[2]:
+            updt_image_rows = int(round(input.shape[1] * image_cols / input.shape[2]))
+            updt_image_cols = image_cols
+        else:
+            updt_image_rows = image_rows
+            updt_image_cols = image_cols
+
+        print('   Update rows, cols from {}, {} to {}, {}'.format(input.shape[1], input.shape[2], updt_image_rows,
+                                                                  updt_image_cols))
+
+        resized_img = np.zeros((input.shape[0], updt_image_rows, updt_image_cols), dtype=input.dtype)
+
+        if interpolator is 'linear':
+            for idx in range(input.shape[0]):
+                resized_img[idx, :, :] = cv2.resize(input[idx, :, :], (updt_image_cols, updt_image_rows),
+                                                    interpolation=cv2.INTER_LINEAR)
+        elif interpolator is 'cubic':
+            for idx in range(input.shape[0]):
+                resized_img[idx, :, :] = cv2.resize(input[idx, :, :], (updt_image_cols, updt_image_rows),
+                                                    interpolation=cv2.INTER_CUBIC)
+        elif interpolator is 'nearest':
+            for idx in range(input.shape[0]):
+                resized_img[idx, :, :] = cv2.resize(input[idx, :, :], (updt_image_cols, updt_image_rows),
+                                                    interpolation=cv2.INTER_NEAREST)
+        elif interpolator is 'cubic_label':
+            for label in range(1, int(input.max()) + 1):
+                temp = copy.deepcopy(input)
+                temp[temp != label] = 0
+                temp[temp > 0] = 1
+                for idx in range(input.shape[0]):
+                    resized_temp = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
+                                              interpolation=cv2.INTER_CUBIC)
+                    resized_temp[resized_temp > threshold] = label
+                    resized_temp[resized_temp < label] = 0
+                    resized_img[idx, :, :][resized_temp == label] = label
+        elif interpolator is 'linear_label':
+            for label in range(1, int(input.max()) + 1):
+                temp = copy.deepcopy(input)
+                temp[temp != label] = 0
+                temp[temp > 0] = 1
+                for idx in range(input.shape[0]):
+                    resized_temp = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
+                                              interpolation=cv2.INTER_LINEAR)
+                    resized_temp[resized_temp > threshold] = label
+                    resized_temp[resized_temp < label] = 0
+                    resized_img[idx, :, :][resized_temp == label] = label
+        else:
+            print('WARNING: No resize performed as the provided interpolator is not compatible')
+            print('Supporter interpolator: [linear, cubic, nearest]')
+
+        if empty_value is 'air':
+            constant_values = -1000
+        elif empty_value is 'min':
+            constant_values = np.min(input)
+        elif empty_value is 'zero':
+            constant_values = 0
+        else:
+            constant_values = -1000
+
+        # two steps padding to avoid odd padding
+        holder = [resized_img.shape[0], image_rows, image_cols] - np.asarray(resized_img.shape)
+        final_padding = [[max([int(i / 2), 0]), max([int(i / 2), 0])] for i in holder]
+        resized_img = np.pad(resized_img, final_padding, 'constant', constant_values=constant_values)
+
+        holder = [resized_img.shape[0], image_rows, image_cols] - np.asarray(resized_img.shape)
+        supp_padding = [[0, i] for i in holder]
+        if np.max(supp_padding) > 0:
+            resized_img = np.pad(resized_img, supp_padding, 'constant', constant_values=constant_values)
+            final_padding = list(np.array(final_padding) + np.array(supp_padding))
+        return resized_img, final_padding
+
+    def keep_main_component(self, annotations):
+        labels = morphology.label(annotations, connectivity=3)
+        if np.max(labels) > 1:
+            area = []
+            max_val = 0
+            for i in range(1, labels.max() + 1):
+                new_area = labels[labels == i].shape[0]
+                area.append(new_area)
+                if new_area == max(area):
+                    max_val = i
+            labels[labels != max_val] = 0
+            labels[labels > 0] = 1
+            annotations = labels
+        return annotations
+
+    def compute_bounding_box(self, annotation, padding=2):
+        '''
+        :param annotation: A binary image of shape [# images, # rows, # cols, channels]
+        :return: the min and max z, row, and column numbers bounding the image
+        '''
+        shape = annotation.shape
+        indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
+        min_slice, max_slice = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[0])
+        '''
+        Get the row values of primary and secondary
+        '''
+        indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
+        min_row, max_row = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[1])
+        '''
+        Get the col values of primary and secondary
+        '''
+        indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
+        min_col, max_col = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[2])
+        return [min_slice, max_slice, min_row, max_row, min_col, max_col]
+
 
 class Normalize_Images(ImageProcessor):
-    def __init__(self, keys=('image',), mean_values=(0,), std_values=(1,),):
+    def __init__(self, keys=('image',), mean_values=(0,), std_values=(1,), ):
         """
         :param keys: tuple of image keys
         :param mean_values: tuple of mean values
@@ -56,6 +442,7 @@ class Normalize_Images(ImageProcessor):
 
     def post_process(self, input_features):
         return input_features
+
 
 class Threshold_Images(ImageProcessor):
     def __init__(self, keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
@@ -96,6 +483,7 @@ class Threshold_Images(ImageProcessor):
 
     def post_process(self, input_features):
         return input_features
+
 
 class Postprocess_Pancreas(ImageProcessor):
     def __init__(self, max_comp=2, dist=95, radius=1, prediction_keys=('prediction',)):
@@ -427,7 +815,7 @@ class DilateBinary(ImageProcessor):
     def __init__(self, image_keys=('annotation',), radius=(5,), run_post_process=False):
         self.image_keys = image_keys
         self.radius = radius
-        self.run_post_process=run_post_process
+        self.run_post_process = run_post_process
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.image_keys)
