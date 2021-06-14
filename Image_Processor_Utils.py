@@ -576,7 +576,7 @@ class Normalize_Images(ImageProcessor):
         return input_features
 
 class Threshold_Images(ImageProcessor):
-    def __init__(self, image_keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(True,)):
+    def __init__(self, image_keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(False,)):
         """
         :param keys: tuple of image keys
         :param lower_bounds: tuple of bounds
