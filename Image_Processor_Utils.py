@@ -96,8 +96,10 @@ def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volum
 class Remove_Smallest_Structures(object):
     def __init__(self):
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        self.Connected_Component_Filter.SetNumberOfThreads(0)
         self.RelabelComponent = sitk.RelabelComponentImageFilter()
         self.RelabelComponent.SortByObjectSizeOn()
+        self.RelabelComponent.SetNumberOfThreads(0)
 
     def remove_smallest_component(self, annotation):
         if type(annotation) is np.ndarray:
