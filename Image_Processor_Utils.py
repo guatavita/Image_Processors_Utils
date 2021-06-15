@@ -12,6 +12,7 @@ from skimage import morphology, measure
 from scipy.spatial import distance
 import cv2
 
+
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
         return args, kwargs
@@ -116,6 +117,7 @@ class Remove_Smallest_Structures(object):
             output = sitk.GetArrayFromImage(output)
 
         return output
+
 
 class Focus_on_CT(ImageProcessor):
     def __init__(self, threshold_value=-250.0, mask_value=1):
@@ -291,7 +293,7 @@ class Focus_on_CT(ImageProcessor):
                 temp = copy.deepcopy(unpadded[:, :, :, channel])
                 for idx in range(unpadded.shape[0]):
                     rescaled_img[idx, :, :, channel] = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
-                                               interpolation=cv2.INTER_CUBIC)
+                                                                  interpolation=cv2.INTER_CUBIC)
         elif interpolator is 'linear_label':
             for channel in range(1, unpadded.shape[-1]):
                 label = 1
@@ -575,6 +577,7 @@ class Normalize_Images(ImageProcessor):
     def post_process(self, input_features):
         return input_features
 
+
 class Threshold_Images(ImageProcessor):
     def __init__(self, image_keys=('image',), lower_bounds=(-np.inf,), upper_bounds=(np.inf,), divides=(False,)):
         """
@@ -590,7 +593,8 @@ class Threshold_Images(ImageProcessor):
 
     def parse(self, image_features, *args, **kwargs):
         _check_keys_(image_features, self.image_keys)
-        for key, lower_bound, upper_bound, divide in zip(self.image_keys, self.lower_bounds, self.upper_bounds, self.divides):
+        for key, lower_bound, upper_bound, divide in zip(self.image_keys, self.lower_bounds, self.upper_bounds,
+                                                         self.divides):
             image_features[key] = tf.where(image_features[key] > tf.cast(upper_bound, dtype=image_features[key].dtype),
                                            tf.cast(upper_bound, dtype=image_features[key].dtype), image_features[key])
             image_features[key] = tf.where(image_features[key] < tf.cast(lower_bound, dtype=image_features[key].dtype),
@@ -602,7 +606,8 @@ class Threshold_Images(ImageProcessor):
 
     def pre_process(self, input_features):
         _check_keys_(input_features, self.image_keys)
-        for key, lower_bound, upper_bound, divide in zip(self.image_keys, self.lower_bounds, self.upper_bounds, self.divides):
+        for key, lower_bound, upper_bound, divide in zip(self.image_keys, self.lower_bounds, self.upper_bounds,
+                                                         self.divides):
             image = input_features[key]
             image[image < lower_bound] = lower_bound
             image[image > upper_bound] = upper_bound
@@ -1051,6 +1056,20 @@ class Random_Left_Right_flip(ImageProcessor):
             input_features[key] = tf.cond(do_aug, lambda: tf.image.flip_left_right(input_features[key]),
                                           lambda: input_features[key])
 
+        return input_features
+
+
+class Random_Contrast(ImageProcessor):
+    def __init__(self, image_keys=('image',), lower_bounds=(0.90,), upper_bounds=(1.10,)):
+        self.image_keys = image_keys
+        self.lower_bounds = lower_bounds
+        self.upper_bounds = upper_bounds
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
+        for image_key, lower_bound, upper_bound in zip(self.image_keys, self.lower_bounds, self.upper_bounds):
+            input_features[image_key] = tf.image.random_contrast(input_features[image_key],
+                                                                 lower=lower_bound, upper=upper_bound)
         return input_features
 
 
