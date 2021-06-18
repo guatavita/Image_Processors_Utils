@@ -11,7 +11,7 @@ import SimpleITK as sitk
 from skimage import morphology, measure
 from scipy.spatial import distance
 import cv2
-
+import math
 
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
@@ -615,11 +615,11 @@ class CreateUpperVagina(ImageProcessor):
             min_slice, max_slice, min_row, max_row, min_col, max_col = compute_bounding_box(prediction[..., class_id],
                                                                                             padding=0)
             spacing = input_features['spacing']
-            nb_slices = sup_margin * spacing[-1]
+            nb_slices = math.ceil(sup_margin/spacing[-1])
             new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
             new_prediction[..., 0:prediction.shape[-1]] = prediction
-            new_prediction[..., -1][max_slice - nb_slices:max_slice, ...] = new_prediction[..., class_id][
-                                                                            max_slice - nb_slices:max_slice, ...]
+            new_prediction[..., -1][(max_slice+1 - nb_slices):(max_slice+1), ...] = new_prediction[..., class_id][
+                                                                            (max_slice+1 - nb_slices):(max_slice+1), ...]
             input_features[key] = new_prediction
         return input_features
 
