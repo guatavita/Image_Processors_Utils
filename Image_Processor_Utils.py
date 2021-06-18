@@ -94,6 +94,61 @@ def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volum
     return annotations
 
 
+def compute_bounding_box(annotation, padding=2):
+    '''
+    :param annotation: A binary image of shape [# images, # rows, # cols, channels]
+    :return: the min and max z, row, and column numbers bounding the image
+    '''
+    shape = annotation.shape
+    indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
+    min_slice, max_slice = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[0])
+    '''
+    Get the row values of primary and secondary
+    '''
+    indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
+    min_row, max_row = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[1])
+    '''
+    Get the col values of primary and secondary
+    '''
+    indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
+    min_col, max_col = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[2])
+    return [min_slice, max_slice, min_row, max_row, min_col, max_col]
+
+
+def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
+    for index in range(1, input_img.shape[-1]):
+
+        temp_img = input_img[..., index]
+
+        if type(temp_img) is np.ndarray:
+            temp_img = sitk.GetImageFromArray(temp_img.astype(np.uint8))
+
+        cast_filter = sitk.CastImageFilter()
+        cast_filter.SetNumberOfThreads(0)
+        cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+        temp_img = cast_filter.Execute(temp_img)
+
+        binary_erode_filter = sitk.BinaryErodeImageFilter()
+        binary_erode_filter.SetNumberOfThreads(0)
+        binary_erode_filter.SetKernelRadius(radius)
+        binary_dilate_filter = sitk.BinaryDilateImageFilter()
+        binary_dilate_filter.SetNumberOfThreads(0)
+        binary_dilate_filter.SetKernelRadius(radius)
+
+        if morph_type == 'closing':
+            temp_img = binary_dilate_filter.Execute(temp_img)
+            temp_img = binary_erode_filter.Execute(temp_img)
+        elif morph_type == 'opening':
+            temp_img = binary_dilate_filter.Execute(temp_img)
+            temp_img = binary_erode_filter.Execute(temp_img)
+        else:
+            raise ValueError("Type {} is not supported".format(morph_type))
+
+        input_img[..., index] = sitk.GetArrayFromImage(temp_img).astype(dtype=np.uint8)
+
+    return input_img
+
+
 class Remove_Smallest_Structures(object):
     def __init__(self):
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
@@ -142,7 +197,7 @@ class Focus_on_CT(ImageProcessor):
         self.original_shape = images.shape
         self.external_mask = np.zeros(images.shape, dtype=np.int16)
         self.compute_external_mask(input_img=images)
-        self.bb_parameters = self.compute_bounding_box(self.external_mask, padding=2)
+        self.bb_parameters = compute_bounding_box(self.external_mask, padding=2)
         # nearest to not change the intensity distribution
         # TODO check final padding
         rescaled_input_img, self.final_padding = self.crop_resize_pad(input=images,
@@ -219,7 +274,7 @@ class Focus_on_CT(ImageProcessor):
 
     def compute_external_mask(self, input_img):
         self.external_mask[input_img > self.threshold_value] = self.mask_value
-        # self.external_mask = self.compute_binary_morphology(input_img=self.external_mask, radius=2, morph_type='opening')
+        # self.external_mask = compute_binary_morphology(input_img=self.external_mask, radius=2, morph_type='opening')
         self.external_mask = morphology.opening(image=self.external_mask, selem=morphology.ball(2))
         # self.external_mask = self.keep_main_component(annotations=self.external_mask)
         main_component_filter = Remove_Smallest_Structures()
@@ -547,6 +602,52 @@ class Focus_on_CT(ImageProcessor):
         return [min_slice, max_slice, min_row, max_row, min_col, max_col]
 
 
+class CreateUpperVagina(ImageProcessor):
+    def __init__(self, prediction_keys=('prediction',), class_id=(5,), sup_margin=(20,)):
+        self.prediction_keys = prediction_keys
+        self.class_id = class_id
+        self.sup_margin = sup_margin
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.prediction_keys)
+        for key, class_id, sup_margin in zip(self.prediction_keys, self.class_id, self.sup_margin):
+            prediction = input_features[key]
+            min_slice, max_slice, min_row, max_row, min_col, max_col = compute_bounding_box(prediction[..., class_id],
+                                                                                            padding=0)
+            spacing = input_features['spacing']
+            nb_slices = sup_margin * spacing[-1]
+            new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
+            new_prediction[..., 0:prediction.shape[-1]] = prediction
+            new_prediction[..., -1][max_slice - nb_slices:max_slice, ...] = new_prediction[..., class_id][
+                                                                            max_slice - nb_slices:max_slice, ...]
+            input_features[key] = new_prediction
+        return input_features
+
+
+class CombinePredictions(ImageProcessor):
+    def __init__(self, prediction_keys=('prediction', 'prediction',), combine_ids=((7, 8), (1, 13, 6)),
+                 closings=(False, True)):
+        self.prediction_keys = prediction_keys
+        self.combine_ids = combine_ids
+        self.closings = closings
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.prediction_keys)
+        for key, combine_id, closing in zip(self.prediction_keys, self.combine_ids, self.closings):
+            prediction = input_features[key]
+            new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
+            new_prediction[..., 0:prediction.shape[-1]] = prediction
+            # combine ID into the last class
+            for id in combine_id:
+                new_prediction[..., -1] += prediction[..., id]
+            # threshold to remove overlap
+            new_prediction[..., -1][new_prediction[..., -1] > 0] = 1
+            if closing:
+                new_prediction[..., -1] = compute_binary_morphology(new_prediction[..., -1], radius=2,
+                                                                    morph_type='closing')
+            input_features[key] = new_prediction
+        return input_features
+
 class Normalize_Images(ImageProcessor):
     def __init__(self, keys=('image',), mean_values=(0,), std_values=(1,), ):
         """
@@ -738,7 +839,7 @@ class Postprocess_Pancreas(ImageProcessor):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key in self.prediction_keys:
             pred = input_features[key]
-            opened_img = self.compute_binary_morphology(input_img=pred, radius=1, morph_type='closing')
+            opened_img = compute_binary_morphology(input_img=pred, radius=1, morph_type='closing')
             pred = self.extract_main_component(nparray=opened_img, dist=95, max_comp=2)
         return input_features
 
