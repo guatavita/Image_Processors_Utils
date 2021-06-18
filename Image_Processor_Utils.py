@@ -625,8 +625,7 @@ class CreateUpperVagina(ImageProcessor):
 
 
 class CombinePredictions(ImageProcessor):
-    def __init__(self, prediction_keys=('prediction', 'prediction',), combine_ids=((7, 8), (1, 13, 6)),
-                 closings=(False, True)):
+    def __init__(self, prediction_keys=('prediction',), combine_ids=((7, 8),), closings=(False,)):
         self.prediction_keys = prediction_keys
         self.combine_ids = combine_ids
         self.closings = closings
