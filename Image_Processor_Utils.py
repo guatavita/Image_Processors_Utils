@@ -94,6 +94,61 @@ def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volum
     return annotations
 
 
+def extract_main_component(nparray, dist=50, max_comp=2):
+
+    # TODO create a dictionnary of the volume per label to filter the keep_id with max_comp
+
+    labels = morphology.label(nparray, connectivity=3)
+    temp_img = np.zeros(labels.shape)
+
+    if np.max(labels) > 1:
+        volumes = []
+        max_val = 0
+
+        # get maximum volume
+        for i in range(1, labels.max() + 1):
+            new_volume = labels[labels == i].shape[0]
+            volumes.append(new_volume)
+            if new_volume == max(volumes):
+                max_val = i
+
+        keep_values = []
+        keep_values.append(max_val)
+
+        ref_volume = copy.deepcopy(labels)
+        ref_volume[ref_volume != max_val] = 0
+        ref_volume[ref_volume > 0] = 1
+        ref_points = measure.marching_cubes_lewiner(ref_volume, step_size=3)[0]
+
+        for i in range(1, labels.max() + 1):
+            if i == max_val:
+                continue
+
+            # compute distance
+            temp_volume = copy.deepcopy(labels)
+            temp_volume[temp_volume != i] = 0
+            temp_volume[temp_volume > 0] = 1
+
+            try:
+                temp_points = measure.marching_cubes_lewiner(temp_volume, step_size=3)[0]
+            except:
+                continue
+
+            euclidean_dist = []
+            for ref_point in ref_points:
+                distances = [distance.euclidean(ref_point, temp_point) for temp_point in temp_points]
+                if min(distances) <= dist:
+                    keep_values.append(i)
+                    break
+
+        for values in keep_values:
+            temp_img[labels == values] = 1
+
+    nparray = temp_img
+
+    return nparray
+
+
 def compute_bounding_box(annotation, padding=2):
     '''
     :param annotation: A binary image of shape [# images, # rows, # cols, channels]
@@ -116,35 +171,32 @@ def compute_bounding_box(annotation, padding=2):
 
 
 def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
-    for index in range(1, input_img.shape[-1]):
 
-        temp_img = input_img[..., index]
+    if type(input_img) is np.ndarray:
+        input_img = sitk.GetImageFromArray(input_img.astype(np.uint8))
 
-        if type(temp_img) is np.ndarray:
-            temp_img = sitk.GetImageFromArray(temp_img.astype(np.uint8))
+    cast_filter = sitk.CastImageFilter()
+    cast_filter.SetNumberOfThreads(0)
+    cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+    input_img = cast_filter.Execute(input_img)
 
-        cast_filter = sitk.CastImageFilter()
-        cast_filter.SetNumberOfThreads(0)
-        cast_filter.SetOutputPixelType(sitk.sitkUInt8)
-        temp_img = cast_filter.Execute(temp_img)
+    binary_erode_filter = sitk.BinaryErodeImageFilter()
+    binary_erode_filter.SetNumberOfThreads(0)
+    binary_erode_filter.SetKernelRadius(radius)
+    binary_dilate_filter = sitk.BinaryDilateImageFilter()
+    binary_dilate_filter.SetNumberOfThreads(0)
+    binary_dilate_filter.SetKernelRadius(radius)
 
-        binary_erode_filter = sitk.BinaryErodeImageFilter()
-        binary_erode_filter.SetNumberOfThreads(0)
-        binary_erode_filter.SetKernelRadius(radius)
-        binary_dilate_filter = sitk.BinaryDilateImageFilter()
-        binary_dilate_filter.SetNumberOfThreads(0)
-        binary_dilate_filter.SetKernelRadius(radius)
+    if morph_type == 'closing':
+        input_img = binary_dilate_filter.Execute(input_img)
+        input_img = binary_erode_filter.Execute(input_img)
+    elif morph_type == 'opening':
+        input_img = binary_dilate_filter.Execute(input_img)
+        input_img = binary_erode_filter.Execute(input_img)
+    else:
+        raise ValueError("Type {} is not supported".format(morph_type))
 
-        if morph_type == 'closing':
-            temp_img = binary_dilate_filter.Execute(temp_img)
-            temp_img = binary_erode_filter.Execute(temp_img)
-        elif morph_type == 'opening':
-            temp_img = binary_dilate_filter.Execute(temp_img)
-            temp_img = binary_erode_filter.Execute(temp_img)
-        else:
-            raise ValueError("Type {} is not supported".format(morph_type))
-
-        input_img[..., index] = sitk.GetArrayFromImage(temp_img).astype(dtype=np.uint8)
+    input_img = sitk.GetArrayFromImage(input_img).astype(dtype=np.uint8)
 
     return input_img
 
@@ -776,70 +828,15 @@ class Postprocess_Pancreas(ImageProcessor):
         index_col = int(np.mean(indexes))
         return (index_slice, index_row, index_col)
 
-    def extract_main_component(self, nparray, dist=50, max_comp=2):
-
-        # TODO create a dictionnary of the volume per label to filter the keep_id with max_comp
-        for index in range(1, nparray.shape[-1]):
-
-            temp_img = nparray[..., index]
-
-            labels = morphology.label(temp_img, connectivity=3)
-
-            if np.max(labels) > 1:
-                volumes = []
-                max_val = 0
-
-                # get maximum volume
-                for i in range(1, labels.max() + 1):
-                    new_volume = labels[labels == i].shape[0]
-                    volumes.append(new_volume)
-                    if new_volume == max(volumes):
-                        max_val = i
-
-                keep_values = []
-                keep_values.append(max_val)
-
-                ref_volume = copy.deepcopy(labels)
-                ref_volume[ref_volume != max_val] = 0
-                ref_volume[ref_volume > 0] = 1
-                ref_points = measure.marching_cubes_lewiner(ref_volume, step_size=3)[0]
-
-                for i in range(1, labels.max() + 1):
-                    if i == max_val:
-                        continue
-
-                    # compute distance
-                    temp_volume = copy.deepcopy(labels)
-                    temp_volume[temp_volume != i] = 0
-                    temp_volume[temp_volume > 0] = 1
-
-                    try:
-                        temp_points = measure.marching_cubes_lewiner(temp_volume, step_size=3)[0]
-                    except:
-                        continue
-
-                    euclidean_dist = []
-                    for ref_point in ref_points:
-                        distances = [distance.euclidean(ref_point, temp_point) for temp_point in temp_points]
-                        euclidean_dist.append(min(distances))
-
-                    if min(euclidean_dist) <= dist:
-                        keep_values.append(i)
-
-                temp_img = np.zeros(labels.shape)
-                for values in keep_values:
-                    temp_img[labels == values] = 1
-
-            nparray[..., index] = temp_img
-
-        return nparray
-
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key in self.prediction_keys:
             pred = input_features[key]
-            opened_img = compute_binary_morphology(input_img=pred, radius=1, morph_type='closing')
-            pred = self.extract_main_component(nparray=opened_img, dist=95, max_comp=2)
+            for index in range(1, pred.shape[-1]):
+                temp_pred = pred[..., index]
+                opened_pred = compute_binary_morphology(input_img=temp_pred, radius=1, morph_type='closing')
+                pred[..., index] = extract_main_component(nparray=opened_pred, dist=95, max_comp=2)
+
         return input_features
 
 
@@ -1214,10 +1211,11 @@ class Random_Rotation(ImageProcessor):
 
 
 class Threshold_Multiclass(ImageProcessor):
-    def __init__(self, threshold={}, connectivity={}, prediction_keys=('prediction',)):
+    def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',)):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
+        self.extract_main_comp = extract_main_comp
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
@@ -1227,12 +1225,17 @@ class Threshold_Multiclass(ImageProcessor):
             for class_id in range(1, pred.shape[-1]):  # ignore the first class as it is background
                 threshold_val = self.threshold.get(str(class_id))
                 connectivity_val = self.connectivity.get(str(class_id))
+                extract_main_comp_val = self.extract_main_comp.get(str(class_id))
                 if threshold_val != 0.0:
                     pred_id = pred[..., class_id]
                     if not pred.dtype == 'int':
                         pred_id[pred_id < threshold_val] = 0
                         pred_id[pred_id > 0] = 1
                         pred_id = pred_id.astype('int')
+
+                    if extract_main_comp_val:
+                        pred_id = extract_main_component(nparray=pred_id, dist=50, max_comp=2)
+
                     if connectivity_val:
                         main_component_filter = Remove_Smallest_Structures()
                         pred_id = main_component_filter.remove_smallest_component(pred_id)
