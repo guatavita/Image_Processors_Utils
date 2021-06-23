@@ -13,6 +13,12 @@ from scipy.spatial import distance
 import cv2
 import math
 
+from threading import Thread
+from multiprocessing import cpu_count
+from queue import *
+
+import time
+
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
         return args, kwargs
@@ -118,7 +124,7 @@ def extract_main_component(nparray, dist=50, max_comp=2):
         ref_volume = copy.deepcopy(labels)
         ref_volume[ref_volume != max_val] = 0
         ref_volume[ref_volume > 0] = 1
-        ref_points = measure.marching_cubes_lewiner(ref_volume, step_size=3)[0]
+        ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
 
         for i in range(1, labels.max() + 1):
             if i == max_val:
@@ -130,7 +136,7 @@ def extract_main_component(nparray, dist=50, max_comp=2):
             temp_volume[temp_volume > 0] = 1
 
             try:
-                temp_points = measure.marching_cubes_lewiner(temp_volume, step_size=3)[0]
+                temp_points = measure.marching_cubes(temp_volume, step_size=3, method='lewiner')[0]
             except:
                 continue
 
@@ -227,7 +233,7 @@ class Remove_Smallest_Structures(object):
 
 
 class Focus_on_CT(ImageProcessor):
-    def __init__(self, threshold_value=-250.0, mask_value=1):
+    def __init__(self, threshold_value=-250.0, mask_value=1, debug=False):
         # TODO this class needs to be cleaned
         self.threshold_value = threshold_value
         self.mask_value = mask_value
@@ -235,6 +241,7 @@ class Focus_on_CT(ImageProcessor):
         self.final_padding = []
         self.original_shape = {}
         self.squeeze_flag = False
+        self.debug = debug
 
     def pre_process(self, input_features):
         images = input_features['image']
@@ -278,15 +285,16 @@ class Focus_on_CT(ImageProcessor):
     def post_process(self, input_features):
         images = input_features['image']
         pred = input_features['prediction']
-        recovered_img = self.recover_original(resize_image=images, original_shape=self.original_shape,
-                                              bb_parameters=self.bb_parameters, final_padding=self.final_padding,
-                                              interpolator='cubic', empty_value='air')
+
+        if self.debug:
+            recovered_img = self.recover_original(resize_image=images, original_shape=self.original_shape,
+                                                  bb_parameters=self.bb_parameters, final_padding=self.final_padding,
+                                                  interpolator='cubic', empty_value='air')
+            input_features['image'] = recovered_img
 
         recovered_pred = self.recover_original_hot(resize_image=pred, original_shape=self.original_shape,
                                                    bb_parameters=self.bb_parameters, final_padding=self.final_padding,
                                                    interpolator='cubic_pred', empty_value='zero')
-
-        input_features['image'] = recovered_img
         input_features['prediction'] = recovered_pred
         return input_features
 
@@ -697,6 +705,7 @@ class CombinePredictions(ImageProcessor):
                 new_prediction[..., -1] = compute_binary_morphology(new_prediction[..., -1], radius=2,
                                                                     morph_type='closing')
             input_features[key] = new_prediction
+
         return input_features
 
 class Normalize_Images(ImageProcessor):
@@ -1211,36 +1220,72 @@ class Random_Rotation(ImageProcessor):
 
 
 class Threshold_Multiclass(ImageProcessor):
-    def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',)):
+    def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
+                 thread_count=int(cpu_count()/2)):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
         self.extract_main_comp = extract_main_comp
+        self.thread_count = 1
+
+    def worker_def(self, A):
+        q = A
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            else:
+                iteration, class_id = item
+                # print('{}, '.format(iteration))
+                try:
+                    threshold_val = self.threshold.get(str(class_id))
+                    connectivity_val = self.connectivity.get(str(class_id))
+                    extract_main_comp_val = self.extract_main_comp.get(str(class_id))
+
+                    if threshold_val != 0.0:
+                        pred_id = self.global_pred[..., class_id]
+                        pred_id[pred_id < threshold_val] = 0
+                        pred_id[pred_id > 0] = 1
+                        pred_id = pred_id.astype('int')
+
+                        if extract_main_comp_val:
+                            pred_id = extract_main_component(nparray=pred_id, dist=50, max_comp=2)
+
+                        if connectivity_val:
+                            main_component_filter = Remove_Smallest_Structures()
+                            pred_id = main_component_filter.remove_smallest_component(pred_id)
+                        self.global_pred[..., class_id] = pred_id
+                except:
+                    print('failed on class {}, '.format(iteration))
+                q.task_done()
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key in self.prediction_keys:
             pred = copy.deepcopy(input_features[key])
             pred = np.squeeze(pred)
+            self.global_pred = pred
+
+            # init threads
+            q = Queue(maxsize=self.thread_count)
+            threads = []
+            for worker in range(self.thread_count):
+                t = Thread(target=self.worker_def, args=(q,))
+                t.start()
+                threads.append(t)
+
+            iteration = 1
             for class_id in range(1, pred.shape[-1]):  # ignore the first class as it is background
-                threshold_val = self.threshold.get(str(class_id))
-                connectivity_val = self.connectivity.get(str(class_id))
-                extract_main_comp_val = self.extract_main_comp.get(str(class_id))
-                if threshold_val != 0.0:
-                    pred_id = pred[..., class_id]
-                    if not pred.dtype == 'int':
-                        pred_id[pred_id < threshold_val] = 0
-                        pred_id[pred_id > 0] = 1
-                        pred_id = pred_id.astype('int')
+                item = [iteration, class_id]
+                iteration += 1
+                q.put(item)
 
-                    if extract_main_comp_val:
-                        pred_id = extract_main_component(nparray=pred_id, dist=50, max_comp=2)
+            input_features[key] = self.global_pred
 
-                    if connectivity_val:
-                        main_component_filter = Remove_Smallest_Structures()
-                        pred_id = main_component_filter.remove_smallest_component(pred_id)
-                    pred[..., class_id] = pred_id
-            input_features[key] = pred
+            for i in range(self.thread_count):
+                q.put(None)
+            for t in threads:
+                t.join()
         return input_features
 
 
