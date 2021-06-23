@@ -145,8 +145,7 @@ def extract_main_component(nparray, dist=50, max_comp=2):
         # this is faster than 'temp_img[np.isin(labels, keep_values)] = 1' for most cases
         for values in keep_values:
             temp_img[labels == values] = 1
-
-    nparray = temp_img
+        nparray = temp_img
 
     return nparray
 
@@ -1211,7 +1210,7 @@ class Threshold_Multiclass(ImageProcessor):
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
         self.extract_main_comp = extract_main_comp
-        self.thread_count = thread_count
+        self.thread_count = 1
 
     def worker_def(self, A):
         q = A
