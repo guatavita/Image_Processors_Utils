@@ -1226,7 +1226,7 @@ class Threshold_Multiclass(ImageProcessor):
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
         self.extract_main_comp = extract_main_comp
-        self.thread_count = 1
+        self.thread_count = thread_count
 
     def worker_def(self, A):
         q = A
