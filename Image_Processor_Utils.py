@@ -10,6 +10,7 @@ import numpy as np
 import SimpleITK as sitk
 from skimage import morphology, measure
 from scipy.spatial import distance
+from scipy.ndimage import binary_opening, binary_closing, generate_binary_structure
 import cv2
 import math
 
@@ -108,20 +109,14 @@ def extract_main_component(nparray, dist=50, max_comp=2):
     temp_img = np.zeros(labels.shape)
 
     if np.max(labels) > 1:
-        volumes = []
-        max_val = 0
 
-        # get maximum volume
-        for i in range(1, labels.max() + 1):
-            new_volume = labels[labels == i].shape[0]
-            volumes.append(new_volume)
-            if new_volume == max(volumes):
-                max_val = i
+        volumes = [labels[labels == i].shape[0] for i in range(1, labels.max() + 1)]
+        max_val = volumes.index(max(volumes)) + 1
 
         keep_values = []
         keep_values.append(max_val)
 
-        ref_volume = copy.deepcopy(labels)
+        ref_volume = np.copy(labels)
         ref_volume[ref_volume != max_val] = 0
         ref_volume[ref_volume > 0] = 1
         ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
@@ -131,22 +126,23 @@ def extract_main_component(nparray, dist=50, max_comp=2):
                 continue
 
             # compute distance
-            temp_volume = copy.deepcopy(labels)
+            temp_volume = np.copy(labels)
             temp_volume[temp_volume != i] = 0
             temp_volume[temp_volume > 0] = 1
 
             try:
+                # this remove small 'artifacts' cause they cannot be meshed
                 temp_points = measure.marching_cubes(temp_volume, step_size=3, method='lewiner')[0]
             except:
                 continue
 
-            euclidean_dist = []
             for ref_point in ref_points:
                 distances = [distance.euclidean(ref_point, temp_point) for temp_point in temp_points]
                 if min(distances) <= dist:
                     keep_values.append(i)
                     break
 
+        # this is faster than 'temp_img[np.isin(labels, keep_values)] = 1' for most cases
         for values in keep_values:
             temp_img[labels == values] = 1
 
@@ -178,31 +174,20 @@ def compute_bounding_box(annotation, padding=2):
 
 def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
 
-    if type(input_img) is np.ndarray:
-        input_img = sitk.GetImageFromArray(input_img.astype(np.uint8))
-
-    cast_filter = sitk.CastImageFilter()
-    cast_filter.SetNumberOfThreads(0)
-    cast_filter.SetOutputPixelType(sitk.sitkUInt8)
-    input_img = cast_filter.Execute(input_img)
-
-    binary_erode_filter = sitk.BinaryErodeImageFilter()
-    binary_erode_filter.SetNumberOfThreads(0)
-    binary_erode_filter.SetKernelRadius(radius)
-    binary_dilate_filter = sitk.BinaryDilateImageFilter()
-    binary_dilate_filter.SetNumberOfThreads(0)
-    binary_dilate_filter.SetKernelRadius(radius)
+    # this is faster than using sitk binary morphology filters (dilate, erode, opening, closing)
+    if len(input_img.shape) == 2:
+        struct = morphology.disk(radius)
+    elif len(input_img.shape) == 3:
+        struct = morphology.ball(radius)
+    else:
+        raise ValueError("Dim {} for morphology structure element not supported".format(len(input_img.shape)))
 
     if morph_type == 'closing':
-        input_img = binary_dilate_filter.Execute(input_img)
-        input_img = binary_erode_filter.Execute(input_img)
+        input_img = binary_closing(input_img, structure=struct)
     elif morph_type == 'opening':
-        input_img = binary_dilate_filter.Execute(input_img)
-        input_img = binary_erode_filter.Execute(input_img)
+        input_img = binary_opening(input_img, structure=struct)
     else:
         raise ValueError("Type {} is not supported".format(morph_type))
-
-    input_img = sitk.GetArrayFromImage(input_img).astype(dtype=np.uint8)
 
     return input_img
 
@@ -696,7 +681,7 @@ class CombinePredictions(ImageProcessor):
             prediction = input_features[key]
             new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
             new_prediction[..., 0:prediction.shape[-1]] = prediction
-            # combine ID into the last class
+            # combine ID into the last class, this is faster than doing prediction.sum(where=mask)
             for id in combine_id:
                 new_prediction[..., -1] += prediction[..., id]
             # threshold to remove overlap
@@ -1262,9 +1247,8 @@ class Threshold_Multiclass(ImageProcessor):
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key in self.prediction_keys:
-            pred = copy.deepcopy(input_features[key])
-            pred = np.squeeze(pred)
-            self.global_pred = pred
+            self.global_pred = copy.deepcopy(input_features[key])
+            self.global_pred = np.squeeze(self.global_pred)
 
             # init threads
             q = Queue(maxsize=self.thread_count)
@@ -1275,7 +1259,7 @@ class Threshold_Multiclass(ImageProcessor):
                 threads.append(t)
 
             iteration = 1
-            for class_id in range(1, pred.shape[-1]):  # ignore the first class as it is background
+            for class_id in range(1, self.global_pred.shape[-1]):  # ignore the first class as it is background
                 item = [iteration, class_id]
                 iteration += 1
                 q.put(item)
