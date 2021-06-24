@@ -375,7 +375,7 @@ class Focus_on_CT(ImageProcessor):
         target_shape = (unpadded.shape[0], updt_image_rows, updt_image_cols, unpadded.shape[-1])
         rescaled_img = np.zeros(target_shape, dtype=resize_image.dtype)
 
-        if interpolator is 'cubic_label':
+        if interpolator == 'cubic_label':
             for channel in range(1, unpadded.shape[-1]):
                 label = 1
                 temp = copy.deepcopy(unpadded[:, :, :, channel])
@@ -387,13 +387,13 @@ class Focus_on_CT(ImageProcessor):
                     rescaled_temp[rescaled_temp > threshold] = label
                     rescaled_temp[rescaled_temp < label] = 0
                     rescaled_img[idx, :, :, channel][rescaled_temp == label] = label
-        if interpolator is 'cubic_pred':
+        if interpolator == 'cubic_pred':
             for channel in range(1, unpadded.shape[-1]):
                 temp = copy.deepcopy(unpadded[:, :, :, channel])
                 for idx in range(unpadded.shape[0]):
                     rescaled_img[idx, :, :, channel] = cv2.resize(temp[idx, :, :], (updt_image_cols, updt_image_rows),
                                                                   interpolation=cv2.INTER_CUBIC)
-        elif interpolator is 'linear_label':
+        elif interpolator == 'linear_label':
             for channel in range(1, unpadded.shape[-1]):
                 label = 1
                 temp = copy.deepcopy(unpadded[:, :, :, channel])
@@ -414,11 +414,11 @@ class Focus_on_CT(ImageProcessor):
                       [bb_parameters[4], original_shape[2] - bb_parameters[5]],
                       [0, 0]]
 
-        if empty_value is 'air':
+        if empty_value == 'air':
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
-        elif empty_value is 'min':
+        elif empty_value == 'min':
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=np.min(rescaled_img))
-        elif empty_value is 'zero':
+        elif empty_value == 'zero':
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=0)
         else:
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
@@ -465,19 +465,19 @@ class Focus_on_CT(ImageProcessor):
         target_shape = (unpadded.shape[0], updt_image_rows, updt_image_cols)
         rescaled_img = np.zeros(target_shape, dtype=resize_image.dtype)
 
-        if interpolator is 'linear':
+        if interpolator == 'linear':
             for idx in range(unpadded.shape[0]):
                 rescaled_img[idx, :, :] = cv2.resize(unpadded[idx, :, :], (updt_image_cols, updt_image_rows),
                                                      interpolation=cv2.INTER_CUBIC)
-        elif interpolator is 'cubic':
+        elif interpolator == 'cubic':
             for idx in range(unpadded.shape[0]):
                 rescaled_img[idx, :, :] = cv2.resize(unpadded[idx, :, :], (updt_image_cols, updt_image_rows),
                                                      interpolation=cv2.INTER_LINEAR)
-        elif interpolator is 'nearest':
+        elif interpolator == 'nearest':
             for idx in range(unpadded.shape[0]):
                 rescaled_img[idx, :, :] = cv2.resize(unpadded[idx, :, :], (updt_image_cols, updt_image_rows),
                                                      interpolation=cv2.INTER_NEAREST)
-        elif interpolator is 'cubic_label':
+        elif interpolator == 'cubic_label':
             for label in range(1, int(unpadded.max()) + 1):
                 temp = copy.deepcopy(unpadded)
                 temp[temp != label] = 0
@@ -488,7 +488,7 @@ class Focus_on_CT(ImageProcessor):
                     rescaled_temp[rescaled_temp > threshold] = label
                     rescaled_temp[rescaled_temp < label] = 0
                     rescaled_img[idx, :, :][rescaled_temp == label] = label
-        elif interpolator is 'linear_label':
+        elif interpolator == 'linear_label':
             for label in range(1, int(unpadded.max()) + 1):
                 temp = copy.deepcopy(unpadded)
                 temp[temp != label] = 0
@@ -507,11 +507,11 @@ class Focus_on_CT(ImageProcessor):
                       [bb_parameters[2], original_shape[1] - bb_parameters[3]],
                       [bb_parameters[4], original_shape[2] - bb_parameters[5]]]
 
-        if empty_value is 'air':
+        if empty_value == 'air':
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
-        elif empty_value is 'min':
+        elif empty_value == 'min':
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=np.min(rescaled_img))
-        elif empty_value is 'zero':
+        elif empty_value == 'zero':
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=0)
         else:
             recovered_img = np.pad(rescaled_img, bb_padding, 'constant', constant_values=-1000)
@@ -551,19 +551,19 @@ class Focus_on_CT(ImageProcessor):
 
         resized_img = np.zeros((input.shape[0], updt_image_rows, updt_image_cols), dtype=input.dtype)
 
-        if interpolator is 'linear':
+        if interpolator == 'linear':
             for idx in range(input.shape[0]):
                 resized_img[idx, :, :] = cv2.resize(input[idx, :, :], (updt_image_cols, updt_image_rows),
                                                     interpolation=cv2.INTER_LINEAR)
-        elif interpolator is 'cubic':
+        elif interpolator == 'cubic':
             for idx in range(input.shape[0]):
                 resized_img[idx, :, :] = cv2.resize(input[idx, :, :], (updt_image_cols, updt_image_rows),
                                                     interpolation=cv2.INTER_CUBIC)
-        elif interpolator is 'nearest':
+        elif interpolator == 'nearest':
             for idx in range(input.shape[0]):
                 resized_img[idx, :, :] = cv2.resize(input[idx, :, :], (updt_image_cols, updt_image_rows),
                                                     interpolation=cv2.INTER_NEAREST)
-        elif interpolator is 'cubic_label':
+        elif interpolator == 'cubic_label':
             for label in range(1, int(input.max()) + 1):
                 temp = copy.deepcopy(input)
                 temp[temp != label] = 0
@@ -574,7 +574,7 @@ class Focus_on_CT(ImageProcessor):
                     resized_temp[resized_temp > threshold] = label
                     resized_temp[resized_temp < label] = 0
                     resized_img[idx, :, :][resized_temp == label] = label
-        elif interpolator is 'linear_label':
+        elif interpolator == 'linear_label':
             for label in range(1, int(input.max()) + 1):
                 temp = copy.deepcopy(input)
                 temp[temp != label] = 0
@@ -589,11 +589,11 @@ class Focus_on_CT(ImageProcessor):
             print('WARNING: No resize performed as the provided interpolator is not compatible')
             print('Supporter interpolator: [linear, cubic, nearest]')
 
-        if empty_value is 'air':
+        if empty_value == 'air':
             constant_values = -1000
-        elif empty_value is 'min':
+        elif empty_value == 'min':
             constant_values = np.min(input)
-        elif empty_value is 'zero':
+        elif empty_value == 'zero':
             constant_values = 0
         else:
             constant_values = -1000
