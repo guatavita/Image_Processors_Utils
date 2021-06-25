@@ -282,40 +282,6 @@ class Focus_on_CT(ImageProcessor):
         input_features['prediction'] = recovered_pred
         return input_features
 
-    def compute_binary_morphology(self, input_img, radius=1, morph_type='closing'):
-
-        for index in range(1, input_img.shape[-1]):
-
-            temp_img = input_img[..., index]
-
-            if type(temp_img) is np.ndarray:
-                temp_img = sitk.GetImageFromArray(temp_img.astype(np.uint8))
-
-            cast_filter = sitk.CastImageFilter()
-            cast_filter.SetNumberOfThreads(0)
-            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
-            temp_img = cast_filter.Execute(temp_img)
-
-            binary_erode_filter = sitk.BinaryErodeImageFilter()
-            binary_erode_filter.SetNumberOfThreads(0)
-            binary_erode_filter.SetKernelRadius(radius)
-            binary_dilate_filter = sitk.BinaryDilateImageFilter()
-            binary_dilate_filter.SetNumberOfThreads(0)
-            binary_dilate_filter.SetKernelRadius(radius)
-
-            if morph_type == 'closing':
-                temp_img = binary_dilate_filter.Execute(temp_img)
-                temp_img = binary_erode_filter.Execute(temp_img)
-            elif morph_type == 'opening':
-                temp_img = binary_dilate_filter.Execute(temp_img)
-                temp_img = binary_erode_filter.Execute(temp_img)
-            else:
-                raise ValueError("Type {} is not supported".format(morph_type))
-
-            input_img[..., index] = sitk.GetArrayFromImage(temp_img).astype(dtype=np.uint8)
-
-        return input_img
-
     def compute_external_mask(self, input_img):
         self.external_mask[input_img > self.threshold_value] = self.mask_value
         # self.external_mask = compute_binary_morphology(input_img=self.external_mask, radius=2, morph_type='opening')
@@ -773,40 +739,6 @@ class Postprocess_Pancreas(ImageProcessor):
         self.radius = radius
         self.prediction_keys = prediction_keys
 
-    def compute_binary_morphology(self, input_img, radius=1, morph_type='closing'):
-
-        for index in range(1, input_img.shape[-1]):
-
-            temp_img = input_img[..., index]
-
-            if type(temp_img) is np.ndarray:
-                temp_img = sitk.GetImageFromArray(temp_img.astype(np.uint8))
-
-            cast_filter = sitk.CastImageFilter()
-            cast_filter.SetNumberOfThreads(0)
-            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
-            temp_img = cast_filter.Execute(temp_img)
-
-            binary_erode_filter = sitk.BinaryErodeImageFilter()
-            binary_erode_filter.SetNumberOfThreads(0)
-            binary_erode_filter.SetKernelRadius(radius)
-            binary_dilate_filter = sitk.BinaryDilateImageFilter()
-            binary_dilate_filter.SetNumberOfThreads(0)
-            binary_dilate_filter.SetKernelRadius(radius)
-
-            if morph_type == 'closing':
-                temp_img = binary_dilate_filter.Execute(temp_img)
-                temp_img = binary_erode_filter.Execute(temp_img)
-            elif morph_type == 'opening':
-                temp_img = binary_dilate_filter.Execute(temp_img)
-                temp_img = binary_erode_filter.Execute(temp_img)
-            else:
-                raise ValueError("Type {} is not supported".format(morph_type))
-
-            input_img[..., index] = sitk.GetArrayFromImage(temp_img).astype(dtype=np.uint8)
-
-        return input_img
-
     def compute_centroid(self, annotation):
         '''
         :param annotation: A binary image of shape [# images, # rows, # cols, channels]
@@ -1205,12 +1137,14 @@ class Random_Rotation(ImageProcessor):
 
 class ProcessPrediction(ImageProcessor):
     def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
-                 thread_count=int(cpu_count()/2)):
+                 thread_count=int(cpu_count()/2), dist=50, max_comp=2):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
         self.extract_main_comp = extract_main_comp
         self.thread_count = thread_count
+        self.dist = dist
+        self.max_comp = max_comp
 
     def worker_def(self, A):
         q = A
@@ -1233,7 +1167,7 @@ class ProcessPrediction(ImageProcessor):
                         pred_id = pred_id.astype('int')
 
                         if extract_main_comp_val:
-                            pred_id = extract_main_component(nparray=pred_id, dist=50, max_comp=2)
+                            pred_id = extract_main_component(nparray=pred_id, dist=self.dist, max_comp=self.max_comp)
 
                         if connectivity_val:
                             main_component_filter = Remove_Smallest_Structures()
@@ -1256,7 +1190,7 @@ class ProcessPrediction(ImageProcessor):
                 pred_id = pred_id.astype('int')
 
                 if extract_main_comp_val:
-                    pred_id = extract_main_component(nparray=pred_id, dist=50, max_comp=2)
+                    pred_id = extract_main_component(nparray=pred_id, dist=self.dist, max_comp=self.max_comp)
 
                 if connectivity_val:
                     main_component_filter = Remove_Smallest_Structures()
