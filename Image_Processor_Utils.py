@@ -241,8 +241,7 @@ class Focus_on_CT(ImageProcessor):
         self.external_mask = np.zeros(images.shape, dtype=np.int16)
         self.compute_external_mask(input_img=images)
         self.bb_parameters = compute_bounding_box(self.external_mask, padding=2)
-        # nearest to not change the intensity distribution
-        # TODO check final padding
+
         rescaled_input_img, self.final_padding = self.crop_resize_pad(input=images,
                                                                       bb_parameters=self.bb_parameters, image_rows=512,
                                                                       image_cols=512, interpolator='cubic',
@@ -591,25 +590,6 @@ class Focus_on_CT(ImageProcessor):
             annotations = labels
         return annotations
 
-    def compute_bounding_box(self, annotation, padding=2):
-        '''
-        :param annotation: A binary image of shape [# images, # rows, # cols, channels]
-        :return: the min and max z, row, and column numbers bounding the image
-        '''
-        shape = annotation.shape
-        indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
-        min_slice, max_slice = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[0])
-        '''
-        Get the row values of primary and secondary
-        '''
-        indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
-        min_row, max_row = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[1])
-        '''
-        Get the col values of primary and secondary
-        '''
-        indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
-        min_col, max_col = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[2])
-        return [min_slice, max_slice, min_row, max_row, min_col, max_col]
 
 
 class CreateUpperVagina(ImageProcessor):
