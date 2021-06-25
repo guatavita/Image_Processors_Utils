@@ -1203,14 +1203,14 @@ class Random_Rotation(ImageProcessor):
         return input_features
 
 
-class Threshold_Multiclass(ImageProcessor):
+class ProcessPrediction(ImageProcessor):
     def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
                  thread_count=int(cpu_count()/2)):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
         self.extract_main_comp = extract_main_comp
-        self.thread_count = 1
+        self.thread_count = thread_count
 
     def worker_def(self, A):
         q = A
@@ -1243,32 +1243,58 @@ class Threshold_Multiclass(ImageProcessor):
                     print('failed on class {}, '.format(iteration))
                 q.task_done()
 
+    def single_process(self):
+        for class_id in range(1, self.global_pred.shape[-1]):  # ignore the first class as it is background
+            threshold_val = self.threshold.get(str(class_id))
+            connectivity_val = self.connectivity.get(str(class_id))
+            extract_main_comp_val = self.extract_main_comp.get(str(class_id))
+
+            if threshold_val != 0.0:
+                pred_id = self.global_pred[..., class_id]
+                pred_id[pred_id < threshold_val] = 0
+                pred_id[pred_id > 0] = 1
+                pred_id = pred_id.astype('int')
+
+                if extract_main_comp_val:
+                    pred_id = extract_main_component(nparray=pred_id, dist=50, max_comp=2)
+
+                if connectivity_val:
+                    main_component_filter = Remove_Smallest_Structures()
+                    pred_id = main_component_filter.remove_smallest_component(pred_id)
+                self.global_pred[..., class_id] = pred_id
+
+    def multi_process(self):
+        # init threads
+        q = Queue(maxsize=self.thread_count)
+        threads = []
+        for worker in range(self.thread_count):
+            t = Thread(target=self.worker_def, args=(q,))
+            t.start()
+            threads.append(t)
+
+        iteration = 1
+        for class_id in range(1, self.global_pred.shape[-1]):  # ignore the first class as it is background
+            item = [iteration, class_id]
+            iteration += 1
+            q.put(item)
+
+        for i in range(self.thread_count):
+            q.put(None)
+        for t in threads:
+            t.join()
+
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key in self.prediction_keys:
             self.global_pred = copy.deepcopy(input_features[key])
             self.global_pred = np.squeeze(self.global_pred)
 
-            # init threads
-            q = Queue(maxsize=self.thread_count)
-            threads = []
-            for worker in range(self.thread_count):
-                t = Thread(target=self.worker_def, args=(q,))
-                t.start()
-                threads.append(t)
-
-            iteration = 1
-            for class_id in range(1, self.global_pred.shape[-1]):  # ignore the first class as it is background
-                item = [iteration, class_id]
-                iteration += 1
-                q.put(item)
+            if self.thread_count > 1:
+                self.multi_process()
+            else:
+                self.single_process()
 
             input_features[key] = self.global_pred
-
-            for i in range(self.thread_count):
-                q.put(None)
-            for t in threads:
-                t.join()
         return input_features
 
 
