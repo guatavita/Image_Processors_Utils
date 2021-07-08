@@ -20,6 +20,7 @@ from queue import *
 
 import time
 
+
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
         return args, kwargs
@@ -102,7 +103,6 @@ def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volum
 
 
 def extract_main_component(nparray, dist=50, max_comp=2):
-
     # TODO create a dictionnary of the volume per label to filter the keep_id with max_comp
 
     labels = morphology.label(nparray, connectivity=3)
@@ -172,7 +172,6 @@ def compute_bounding_box(annotation, padding=2):
 
 
 def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
-
     # this is faster than using sitk binary morphology filters (dilate, erode, opening, closing)
     if len(input_img.shape) == 2:
         struct = morphology.disk(radius)
@@ -591,7 +590,6 @@ class Focus_on_CT(ImageProcessor):
         return annotations
 
 
-
 class CreateUpperVagina(ImageProcessor):
     def __init__(self, prediction_keys=('prediction',), class_id=(5,), sup_margin=(20,)):
         self.prediction_keys = prediction_keys
@@ -605,11 +603,12 @@ class CreateUpperVagina(ImageProcessor):
             min_slice, max_slice, min_row, max_row, min_col, max_col = compute_bounding_box(prediction[..., class_id],
                                                                                             padding=0)
             spacing = input_features['spacing']
-            nb_slices = math.ceil(sup_margin/spacing[-1])
+            nb_slices = math.ceil(sup_margin / spacing[-1])
             new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
             new_prediction[..., 0:prediction.shape[-1]] = prediction
-            new_prediction[..., -1][(max_slice+1 - nb_slices):(max_slice+1), ...] = new_prediction[..., class_id][
-                                                                            (max_slice+1 - nb_slices):(max_slice+1), ...]
+            new_prediction[..., -1][(max_slice + 1 - nb_slices):(max_slice + 1), ...] = new_prediction[..., class_id][
+                                                                                        (max_slice + 1 - nb_slices):(
+                                                                                                    max_slice + 1), ...]
             input_features[key] = new_prediction
         return input_features
 
@@ -637,6 +636,7 @@ class CombinePredictions(ImageProcessor):
             input_features[key] = new_prediction
 
         return input_features
+
 
 class Normalize_Images(ImageProcessor):
     def __init__(self, keys=('image',), mean_values=(0,), std_values=(1,), ):
@@ -1088,6 +1088,48 @@ class Random_Up_Down_flip(ImageProcessor):
         return input_features
 
 
+class Extract_Patch(ImageProcessor):
+    def __init__(self, image_key='image', annotation_key='annotation', patch_size=(32, 192, 192),
+                 is_validation=False):
+        self.image_key = image_key
+        self.annotation_key = annotation_key
+        self.patch_size = patch_size
+        self.is_validation = is_validation
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, (self.image_key, self.annotation_key))
+
+        image = input_features[self.image_key]
+        annotation = input_features[self.annotation_key]
+
+        if self.is_validation:
+            # use np.where to have more overlap with labels
+            slice_list, row_list, col_list = np.where(annotation > 0)
+            slice_rind, row_rind, col_rind = np.random.randint(0, len(slice_list)), \
+                                             np.random.randint(0, len(row_list)), \
+                                             np.random.randint(0, len(col_list))
+            i_slice, i_row, i_col = slice_list[slice_rind], row_list[row_rind], col_list[col_rind]
+        else:
+            # get random index inside bounding box of labels to have more regions without labels
+            min_slice, max_slice, min_row, max_row, min_col, max_col = compute_bounding_box(annotation, padding=0)
+            i_slice, i_row, i_col = np.random.randint(min_slice, max_slice + 1), \
+                                    np.random.randint(min_row, max_row + 1), \
+                                    np.random.randint(min_col, max_col + 1)
+
+        # pull patch size at the random index for both images and return the patch
+        image = image[i_slice - self.patch_size[0] / 2:i_slice + self.patch_size[0] / 2,
+                i_row - self.patch_size[1] / 2:i_row + self.patch_size[1] / 2,
+                i_col - self.patch_size[2] / 2:i_col + self.patch_size[2] / 2, ...]
+        annotation = annotation[i_slice - self.patch_size[0] / 2:i_slice + self.patch_size[0] / 2,
+                     i_row - self.patch_size[1] / 2:i_row + self.patch_size[1] / 2,
+                     i_col - self.patch_size[2] / 2:i_col + self.patch_size[2] / 2, ...]
+
+        input_features[self.image_key] = image
+        input_features[self.annotation_key] = annotation
+
+        return input_features
+
+
 class Random_Rotation(ImageProcessor):
     def __init__(self, image_keys=('image', 'annotation'), interp=('bilinear', 'nearest'), angle=0.25,
                  dtypes=('float16', 'float16'), filling=('nearest', 'constant')):
@@ -1117,7 +1159,7 @@ class Random_Rotation(ImageProcessor):
 
 class ProcessPrediction(ImageProcessor):
     def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
-                 thread_count=int(cpu_count()/2), dist=50, max_comp=2):
+                 thread_count=int(cpu_count() / 2), dist=50, max_comp=2):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
