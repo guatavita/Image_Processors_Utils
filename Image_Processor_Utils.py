@@ -12,7 +12,7 @@ from skimage import morphology, measure
 from scipy.spatial import distance
 from scipy.ndimage import binary_opening, binary_closing, generate_binary_structure
 import cv2
-import math
+from math import floor, ceil
 
 from threading import Thread
 from multiprocessing import cpu_count
@@ -1116,8 +1116,23 @@ class Extract_Patch(ImageProcessor):
                      i_row - int(self.patch_size[1] / 2):i_row + int(self.patch_size[1] / 2),
                      i_col - int(self.patch_size[2] / 2):i_col + int(self.patch_size[2] / 2), ...]
 
+        img_shape = tf.shape(image)
+        remain_z, remain_r, remain_c = self.patch_size[0] - img_shape[0], \
+                                       self.patch_size[1] - img_shape[1], \
+                                       self.patch_size[2] - img_shape[2]
+
+        paddings = [[tf.math.floor(remain_z / 2), tf.math.ceil(remain_z / 2)],
+                    [tf.math.floor(remain_r / 2), tf.math.ceil(remain_r / 2)],
+                    [tf.math.floor(remain_c / 2), tf.math.ceil(remain_c / 2)], [0, 0]]
+
+        image = tf.pad(image, paddings=paddings, constant_values=tf.reduce_min(image))
+        annotation = tf.pad(annotation, paddings=paddings, constant_values=tf.reduce_min(image))
+
         input_features[self.image_key] = image
         input_features[self.annotation_key] = annotation
+
+        tf.print(tf.shape(image))
+        tf.print(tf.shape(annotation))
 
         return input_features
 
