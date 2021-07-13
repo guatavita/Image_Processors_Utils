@@ -1108,15 +1108,19 @@ class Extract_Patch(ImageProcessor):
                                 tf.random.uniform(shape=[], minval=bounding_box[2], maxval=bounding_box[3] + 1, dtype=tf.int64), \
                                 tf.random.uniform(shape=[], minval=bounding_box[4], maxval=bounding_box[5] + 1, dtype=tf.int64)
 
-        # pull patch size at the random index for both images and return the patch
-        image = image[i_slice - int(self.patch_size[0] / 2):i_slice + int(self.patch_size[0] / 2),
-                i_row - int(self.patch_size[1] / 2):i_row + int(self.patch_size[1] / 2),
-                i_col - int(self.patch_size[2] / 2):i_col + int(self.patch_size[2] / 2), ...]
-        annotation = annotation[i_slice - int(self.patch_size[0] / 2):i_slice + int(self.patch_size[0] / 2),
-                     i_row - int(self.patch_size[1] / 2):i_row + int(self.patch_size[1] / 2),
-                     i_col - int(self.patch_size[2] / 2):i_col + int(self.patch_size[2] / 2), ...]
-
+        zero = tf.constant(0)
         img_shape = tf.shape(image)
+        z_start = tf.maximum(zero, i_slice - int(self.patch_size[0] / 2))
+        z_stop = tf.minimum(i_slice + int(self.patch_size[0] / 2), img_shape[0])
+        r_start = tf.maximum(zero, i_row - int(self.patch_size[1] / 2))
+        r_stop = tf.minimum(i_row + int(self.patch_size[1] / 2), img_shape[1])
+        c_start = tf.maximum(zero, i_col - int(self.patch_size[2] / 2))
+        c_stop = tf.minimum(i_col + int(self.patch_size[2] / 2), img_shape[2])
+
+        # pull patch size at the random index for both images and return the patch
+        image = image[z_start:z_stop, r_start:r_stop, c_start:c_stop, ...]
+        annotation = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop, ...]
+
         remain_z, remain_r, remain_c = self.patch_size[0] - img_shape[0], \
                                        self.patch_size[1] - img_shape[1], \
                                        self.patch_size[2] - img_shape[2]
@@ -1130,10 +1134,6 @@ class Extract_Patch(ImageProcessor):
 
         input_features[self.image_key] = image
         input_features[self.annotation_key] = annotation
-
-        tf.print(tf.shape(image))
-        tf.print(tf.shape(annotation))
-
         return input_features
 
 
