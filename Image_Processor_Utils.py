@@ -1104,11 +1104,11 @@ class Extract_Patch(ImageProcessor):
         bounding_box = input_features[self.box_key]
 
         # get random index inside bounding box of labels to have more regions without labels
-        i_slice, i_row, i_col = tf.random.uniform(shape=[], minval=bounding_box[0], maxval=bounding_box[1] + 1, dtype=tf.int64), \
-                                tf.random.uniform(shape=[], minval=bounding_box[2], maxval=bounding_box[3] + 1, dtype=tf.int64), \
-                                tf.random.uniform(shape=[], minval=bounding_box[4], maxval=bounding_box[5] + 1, dtype=tf.int64)
+        i_slice, i_row, i_col = tf.random.uniform(shape=[], minval=bounding_box[0], maxval=bounding_box[1] + 1, dtype=tf.int32), \
+                                tf.random.uniform(shape=[], minval=bounding_box[2], maxval=bounding_box[3] + 1, dtype=tf.int32), \
+                                tf.random.uniform(shape=[], minval=bounding_box[4], maxval=bounding_box[5] + 1, dtype=tf.int32)
 
-        zero = tf.constant(0)
+        zero = tf.constant(0, dtype=tf.int32)
         img_shape = tf.shape(image)
         z_start = tf.maximum(zero, i_slice - int(self.patch_size[0] / 2))
         z_stop = tf.minimum(i_slice + int(self.patch_size[0] / 2), img_shape[0])
