@@ -1100,14 +1100,13 @@ class Extract_Patch(ImageProcessor):
 
         image = input_features[self.image_key]
         annotation = input_features[self.annotation_key]
-        min_slice, max_slice, min_row, max_row, min_col, max_col = input_features[self.box_key]
+        # min_slice, max_slice, min_row, max_row, min_col, max_col
+        bounding_box = input_features[self.box_key]
 
         # get random index inside bounding box of labels to have more regions without labels
-        i_slice, i_row, i_col = np.random.randint(min_slice, max_slice + 1), \
-                                np.random.randint(min_row, max_row + 1), \
-                                np.random.randint(min_col, max_col + 1)
-
-        # i_slice, i_row, i_col = 63, 288, 139
+        i_slice, i_row, i_col = tf.random.uniform(shape=[], minval=bounding_box[0], maxval=bounding_box[1] + 1, dtype=tf.int64), \
+                                tf.random.uniform(shape=[], minval=bounding_box[2], maxval=bounding_box[3] + 1, dtype=tf.int64), \
+                                tf.random.uniform(shape=[], minval=bounding_box[4], maxval=bounding_box[5] + 1, dtype=tf.int64)
 
         # pull patch size at the random index for both images and return the patch
         image = image[i_slice - int(self.patch_size[0] / 2):i_slice + int(self.patch_size[0] / 2),
