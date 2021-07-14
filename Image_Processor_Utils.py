@@ -603,7 +603,7 @@ class CreateUpperVagina(ImageProcessor):
             min_slice, max_slice, min_row, max_row, min_col, max_col = compute_bounding_box(prediction[..., class_id],
                                                                                             padding=0)
             spacing = input_features['spacing']
-            nb_slices = math.ceil(sup_margin / spacing[-1])
+            nb_slices = ceil(sup_margin / spacing[-1])
             new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
             new_prediction[..., 0:prediction.shape[-1]] = prediction
             new_prediction[..., -1][(max_slice + 1 - nb_slices):(max_slice + 1), ...] = new_prediction[..., class_id][
