@@ -1121,9 +1121,10 @@ class Extract_Patch(ImageProcessor):
         image = image[z_start:z_stop, r_start:r_stop, c_start:c_stop, ...]
         annotation = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop, ...]
 
-        remain_z, remain_r, remain_c = self.patch_size[0] - img_shape[0], \
-                                       self.patch_size[1] - img_shape[1], \
-                                       self.patch_size[2] - img_shape[2]
+        cropped_img_shape = tf.shape(image)
+        remain_z, remain_r, remain_c = self.patch_size[0] - cropped_img_shape[0], \
+                                       self.patch_size[1] - cropped_img_shape[1], \
+                                       self.patch_size[2] - cropped_img_shape[2]
 
         paddings = [[tf.math.floor(remain_z / 2), tf.math.ceil(remain_z / 2)],
                     [tf.math.floor(remain_r / 2), tf.math.ceil(remain_r / 2)],
