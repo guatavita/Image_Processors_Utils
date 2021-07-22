@@ -20,6 +20,8 @@ from queue import *
 
 import time
 
+from Image_Processors_Module.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
+
 
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
@@ -202,17 +204,96 @@ class Remove_Smallest_Structures(object):
         if type(annotation) is np.ndarray:
             annotation_handle = sitk.GetImageFromArray(annotation.astype(np.uint8))
             convert = True
-
+        else:
+            annotation_handle = annotation
         label_image = self.Connected_Component_Filter.Execute(
             sitk.BinaryThreshold(sitk.Cast(annotation_handle, sitk.sitkFloat32), lowerThreshold=0.01,
                                  upperThreshold=np.inf))
         label_image = self.RelabelComponent.Execute(label_image)
         output = sitk.BinaryThreshold(sitk.Cast(label_image, sitk.sitkFloat32), lowerThreshold=0.1, upperThreshold=1.0)
+        if convert:
+            output = sitk.GetArrayFromImage(output)
+        return output
+
+
+class Fill_Hole_Binary(object):
+    def __init__(self):
+        self.BinaryFillholeImageFilter = sitk.BinaryFillholeImageFilter()
+        self.BinaryFillholeImageFilter.SetNumberOfThreads(0)
+        self.BinaryFillholeImageFilter.SetForegroundValue(1)
+
+    def fill_hole_binary_3D(self, annotation):
+        if type(annotation) is np.ndarray:
+            annotation_handle = sitk.GetImageFromArray(annotation.astype(np.uint8))
+            convert = True
+        else:
+            annotation_handle = annotation
+
+        output = self.BinaryFillholeImageFilter.Execute(annotation_handle)
+        if convert:
+            output = sitk.GetArrayFromImage(output)
+        return output
+
+    def fill_hole_binary_2D(self, annotation):
+
+        if type(annotation) is np.ndarray:
+            annotation_handle = sitk.GetImageFromArray(annotation.astype(np.uint8))
+            convert = True
+        else:
+            annotation_handle = annotation
+
+        annotation_shape = annotation.shape
+        output_list = []
+
+        for index in range(0, annotation_shape[0]):
+            extract_filter = sitk.ExtractImageFilter()
+            extract_filter.SetSize([annotation_shape[1], annotation_shape[2], 0])
+            extract_filter.SetIndex([0, 0, index])
+            annotation_slice = extract_filter.Execute(annotation_handle)
+            output_slice = self.BinaryFillholeImageFilter.Execute(annotation_slice)
+            output_list.append(output_slice)
+
+        join_series_filter = sitk.JoinSeriesImageFilter()
+        join_series_filter.SetNumberOfThreads(0)
+        output = join_series_filter.Execute(output_list)
 
         if convert:
             output = sitk.GetArrayFromImage(output)
-
         return output
+
+
+class CreateExternal(ImageProcessor):
+    def __init__(self, image_key='image', output_key='external', output_type=np.int16, threshold_value=-250.0,
+                 mask_value=1, run_3D=False):
+        self.image_key = image_key
+        self.output_key = output_key
+        self.output_type = output_type
+        self.threshold_value = threshold_value
+        self.mask_value = mask_value
+        self.run_3D = run_3D
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=(self.image_key,))
+        image = input_features[self.image_key]
+        self.external_mask = np.zeros(image.shape, dtype=self.output_type)
+        self.external_mask[image > self.threshold_value] = self.mask_value
+
+        # remove small stuff (for example table or mask artefact)
+        self.external_mask = morphology.opening(image=self.external_mask, selem=morphology.ball(2))
+
+        # remove unconnected component
+        main_component_filter = Remove_Smallest_Structures()
+        self.external_mask = main_component_filter.remove_smallest_component(self.external_mask)
+
+        # fill holes per slice (avoid bowel bag missed on top of image)
+        fill_hole_filter = Fill_Hole_Binary()
+        if self.run_3D:
+            self.external_mask = fill_hole_filter.fill_hole_binary_3D(self.external_mask)
+        else:
+            self.external_mask = fill_hole_filter.fill_hole_binary_2D(self.external_mask)
+
+        input_features[self.output_key] = self.external_mask
+        return input_features
 
 
 class Focus_on_CT(ImageProcessor):
@@ -1089,7 +1170,8 @@ class Random_Up_Down_flip(ImageProcessor):
 
 
 class Extract_Patch(ImageProcessor):
-    def __init__(self, image_key='image', annotation_key='annotation', box_key='bounding_box', patch_size=(32, 192, 192)):
+    def __init__(self, image_key='image', annotation_key='annotation', box_key='bounding_box',
+                 patch_size=(32, 192, 192)):
         self.image_key = image_key
         self.annotation_key = annotation_key
         self.box_key = box_key
@@ -1104,9 +1186,12 @@ class Extract_Patch(ImageProcessor):
         bounding_box = input_features[self.box_key]
 
         # get random index inside bounding box of labels to have more regions without labels
-        i_slice, i_row, i_col = tf.random.uniform(shape=[], minval=bounding_box[0], maxval=bounding_box[1] + 1, dtype=tf.int64), \
-                                tf.random.uniform(shape=[], minval=bounding_box[2], maxval=bounding_box[3] + 1, dtype=tf.int64), \
-                                tf.random.uniform(shape=[], minval=bounding_box[4], maxval=bounding_box[5] + 1, dtype=tf.int64)
+        i_slice, i_row, i_col = tf.random.uniform(shape=[], minval=bounding_box[0], maxval=bounding_box[1] + 1,
+                                                  dtype=tf.int64), \
+                                tf.random.uniform(shape=[], minval=bounding_box[2], maxval=bounding_box[3] + 1,
+                                                  dtype=tf.int64), \
+                                tf.random.uniform(shape=[], minval=bounding_box[4], maxval=bounding_box[5] + 1,
+                                                  dtype=tf.int64)
 
         zero = tf.constant(0, dtype=tf.int64)
         img_shape = tf.shape(image, out_type=tf.int64)
