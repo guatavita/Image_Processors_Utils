@@ -104,7 +104,11 @@ def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volum
     return annotations
 
 
-def extract_main_component(nparray, dist=50, max_comp=2):
+def extract_main_component(nparray, dist=50, max_comp=2, min_vol=2000):
+    '''
+    dist in mm
+    min_vol in cubic mm
+    '''
     # TODO create a dictionnary of the volume per label to filter the keep_id with max_comp
 
     labels = morphology.label(nparray, connectivity=3)
@@ -116,7 +120,7 @@ def extract_main_component(nparray, dist=50, max_comp=2):
         max_val = volumes.index(max(volumes)) + 1
 
         keep_values = []
-        keep_values.append(max_val)
+        keep_values.append([max_val, max(volumes)])
 
         ref_volume = np.copy(labels)
         ref_volume[ref_volume != max_val] = 0
@@ -128,25 +132,33 @@ def extract_main_component(nparray, dist=50, max_comp=2):
                 continue
 
             # compute distance
-            temp_volume = np.copy(labels)
-            temp_volume[temp_volume != i] = 0
-            temp_volume[temp_volume > 0] = 1
+            temp_label = np.copy(labels)
+            temp_label[temp_label != i] = 0
+            temp_label[temp_label > 0] = 1
+
+            temp_volume = temp_label[temp_label == 1].shape[0]
+
+            if temp_volume < min_vol:
+                continue
 
             try:
                 # this remove small 'artifacts' cause they cannot be meshed
-                temp_points = measure.marching_cubes(temp_volume, step_size=3, method='lewiner')[0]
+                temp_points = measure.marching_cubes(temp_label, step_size=3, method='lewiner')[0]
             except:
                 continue
 
             for ref_point in ref_points:
                 distances = [distance.euclidean(ref_point, temp_point) for temp_point in temp_points]
-                if min(distances) <= dist:
-                    keep_values.append(i)
+                if min(distances) < dist:
+                    keep_values.append([i, temp_volume])
                     break
 
+        # sort by volume
+        keep_values = sorted(keep_values, key=lambda x: x[1], reverse=True)
+
         # this is faster than 'temp_img[np.isin(labels, keep_values)] = 1' for most cases
-        for values in keep_values:
-            temp_img[labels == values] = 1
+        for values in keep_values[0:max_comp]:
+            temp_img[labels == values[0]] = 1
         nparray = temp_img
 
     return nparray
@@ -297,6 +309,7 @@ class CreateExternal(ImageProcessor):
 
     def post_process(self, input_features):
         return input_features
+
 
 class Focus_on_CT(ImageProcessor):
     def __init__(self, threshold_value=-250.0, mask_value=1, debug=False):
@@ -1254,7 +1267,7 @@ class Random_Rotation(ImageProcessor):
 
 class ProcessPrediction(ImageProcessor):
     def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
-                 thread_count=int(cpu_count() / 2), dist=50, max_comp=2):
+                 thread_count=int(cpu_count() / 2), dist=50, max_comp=2, min_vol=2000):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
@@ -1262,6 +1275,7 @@ class ProcessPrediction(ImageProcessor):
         self.thread_count = thread_count
         self.dist = dist
         self.max_comp = max_comp
+        self.min_vol = min_vol
 
     def worker_def(self, A):
         q = A
@@ -1284,7 +1298,7 @@ class ProcessPrediction(ImageProcessor):
                         pred_id = pred_id.astype('int')
 
                         if extract_main_comp_val:
-                            pred_id = extract_main_component(nparray=pred_id, dist=self.dist, max_comp=self.max_comp)
+                            pred_id = extract_main_component(nparray=pred_id, dist=self.dist, max_comp=self.max_comp, min_vol=self.min_vol)
 
                         if connectivity_val:
                             main_component_filter = Remove_Smallest_Structures()
