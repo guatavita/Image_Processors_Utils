@@ -295,6 +295,8 @@ class CreateExternal(ImageProcessor):
         input_features[self.output_key] = self.external_mask
         return input_features
 
+    def post_process(self, input_features):
+        return input_features
 
 class Focus_on_CT(ImageProcessor):
     def __init__(self, threshold_value=-250.0, mask_value=1, debug=False):
