@@ -141,17 +141,20 @@ def extract_main_component(nparray, dist=50, max_comp=2, min_vol=2000):
             if temp_volume < min_vol:
                 continue
 
-            try:
-                # this remove small 'artifacts' cause they cannot be meshed
-                temp_points = measure.marching_cubes(temp_label, step_size=3, method='lewiner')[0]
-            except:
-                continue
+            if dist:
+                try:
+                    # this remove small 'artifacts' cause they cannot be meshed
+                    temp_points = measure.marching_cubes(temp_label, step_size=3, method='lewiner')[0]
+                except:
+                    continue
 
-            for ref_point in ref_points:
-                distances = [distance.euclidean(ref_point, temp_point) for temp_point in temp_points]
-                if min(distances) < dist:
-                    keep_values.append([i, temp_volume])
-                    break
+                for ref_point in ref_points:
+                    distances = [distance.euclidean(ref_point, temp_point) for temp_point in temp_points]
+                    if min(distances) < dist:
+                        keep_values.append([i, temp_volume])
+                        break
+            else:
+                keep_values.append([i, temp_volume])
 
         # sort by volume
         keep_values = sorted(keep_values, key=lambda x: x[1], reverse=True)
@@ -1267,7 +1270,7 @@ class Random_Rotation(ImageProcessor):
 
 class ProcessPrediction(ImageProcessor):
     def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
-                 thread_count=int(cpu_count() / 2), dist=50, max_comp=2, min_vol=2000):
+                 thread_count=int(cpu_count() / 2), dist={}, max_comp={}, min_vol={}):
         self.threshold = threshold
         self.connectivity = connectivity
         self.prediction_keys = prediction_keys
@@ -1298,7 +1301,10 @@ class ProcessPrediction(ImageProcessor):
                         pred_id = pred_id.astype('int')
 
                         if extract_main_comp_val:
-                            pred_id = extract_main_component(nparray=pred_id, dist=self.dist, max_comp=self.max_comp, min_vol=self.min_vol)
+                            dist = self.dist.get(str(class_id))
+                            max_comp = self.dist.max_comp(str(class_id))
+                            min_vol = self.dist.min_vol(str(class_id))
+                            pred_id = extract_main_component(nparray=pred_id, dist=dist, max_comp=max_comp, min_vol=min_vol)
 
                         if connectivity_val:
                             main_component_filter = Remove_Smallest_Structures()
