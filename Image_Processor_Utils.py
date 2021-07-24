@@ -1302,8 +1302,8 @@ class ProcessPrediction(ImageProcessor):
 
                         if extract_main_comp_val:
                             dist = self.dist.get(str(class_id))
-                            max_comp = self.dist.max_comp(str(class_id))
-                            min_vol = self.dist.min_vol(str(class_id))
+                            max_comp = self.max_comp(str(class_id))
+                            min_vol = self.min_vol(str(class_id))
                             pred_id = extract_main_component(nparray=pred_id, dist=dist, max_comp=max_comp, min_vol=min_vol)
 
                         if connectivity_val:
