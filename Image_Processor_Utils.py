@@ -260,9 +260,10 @@ class Fill_Hole_Binary(object):
         annotation_shape = annotation.shape
         output_list = []
 
+        # shapes are reversed in ITK
         for index in range(0, annotation_shape[0]):
             extract_filter = sitk.ExtractImageFilter()
-            extract_filter.SetSize([annotation_shape[1], annotation_shape[2], 0])
+            extract_filter.SetSize([annotation_shape[2], annotation_shape[1], 0])
             extract_filter.SetIndex([0, 0, index])
             annotation_slice = extract_filter.Execute(annotation_handle)
             output_slice = self.BinaryFillholeImageFilter.Execute(annotation_slice)
