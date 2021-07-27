@@ -122,10 +122,11 @@ def extract_main_component(nparray, dist=50, max_comp=2, min_vol=2000):
         keep_values = []
         keep_values.append([max_val, max(volumes)])
 
-        ref_volume = np.copy(labels)
-        ref_volume[ref_volume != max_val] = 0
-        ref_volume[ref_volume > 0] = 1
-        ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
+        if dist:
+            ref_volume = np.copy(labels)
+            ref_volume[ref_volume != max_val] = 0
+            ref_volume[ref_volume > 0] = 1
+            ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
 
         for i in range(1, labels.max() + 1):
             if i == max_val:
@@ -1328,7 +1329,10 @@ class ProcessPrediction(ImageProcessor):
                 pred_id = pred_id.astype('int')
 
                 if extract_main_comp_val:
-                    pred_id = extract_main_component(nparray=pred_id, dist=self.dist, max_comp=self.max_comp)
+                    dist = self.dist.get(str(class_id))
+                    max_comp = self.max_comp.get(str(class_id))
+                    min_vol = self.min_vol.get(str(class_id))
+                    pred_id = extract_main_component(nparray=pred_id, dist=dist, max_comp=max_comp, min_vol=min_vol)
 
                 if connectivity_val:
                     main_component_filter = Remove_Smallest_Structures()
