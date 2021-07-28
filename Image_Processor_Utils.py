@@ -20,9 +20,6 @@ from queue import *
 
 import time
 
-from Image_Processors_Module.Plot_And_Scroll_Images.Plot_Scroll_Images import plot_scroll_Image
-
-
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
         return args, kwargs
