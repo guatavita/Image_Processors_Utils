@@ -1117,17 +1117,10 @@ class Per_Image_MinMax_Normalization(ImageProcessor):
         _check_keys_(input_features, self.image_keys)
         for key in self.image_keys:
             image = input_features[key]
-            image = tf.math.divide(
-                tf.math.subtract(
-                    image,
-                    tf.reduce_min(image)
-                ),
-                tf.math.subtract(
-                    tf.reduce_max(image),
-                    tf.reduce_min(image)
-                )
-            )
-            image = tf.multiply(image, tf.cast(self.threshold_value, image.dtype))
+            min_value = np.min(image)
+            max_value = np.max(image)
+            image = (image-min_value)/(max_value-min_value)
+            image = image * self.threshold_value
             input_features[key] = image
         return input_features
 
