@@ -1113,6 +1113,26 @@ class Per_Image_MinMax_Normalization(ImageProcessor):
 
         return input_features
 
+    def pre_process(self, input_features):
+        _check_keys_(input_features, self.image_keys)
+        for key in self.image_keys:
+            image = input_features[key]
+            image = tf.math.divide(
+                tf.math.subtract(
+                    image,
+                    tf.reduce_min(image)
+                ),
+                tf.math.subtract(
+                    tf.reduce_max(image),
+                    tf.reduce_min(image)
+                )
+            )
+            image = tf.multiply(image, tf.cast(self.threshold_value, image.dtype))
+            input_features[key] = image
+        return input_features
+
+    def post_process(self, input_features):
+        return input_features
 
 class Random_Crop_and_Resize(ImageProcessor):
     def __init__(self, min_scale=0.80, image_rows=512, image_cols=512, image_keys=('image', 'annotation'),
