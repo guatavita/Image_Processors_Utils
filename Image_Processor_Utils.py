@@ -941,17 +941,6 @@ class Repeat_Channel_Per_Key(ImageProcessor):
         return input_features
 
 
-class Expand_Dimensions_Per_Key(ImageProcessor):
-    def __init__(self, axis=-1, image_keys=('image',)):
-        self.axis = axis
-        self.image_keys = image_keys
-
-    def parse(self, input_features, *args, **kwargs):
-        for key in self.image_keys:
-            input_features[key] = tf.expand_dims(input_features[key], axis=self.axis)
-        return input_features
-
-
 class Ensure_Image_Key_Proportions(ImageProcessor):
     def __init__(self, image_rows=512, image_cols=512, preserve_aspect_ratio=False, image_keys=('image', 'annotation'),
                  interp=('bilinear', 'nearest')):
