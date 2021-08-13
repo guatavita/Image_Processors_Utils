@@ -1236,10 +1236,8 @@ class Extract_Patch(ImageProcessor):
                     [tf.math.floor(remain_r / 2), tf.math.ceil(remain_r / 2)],
                     [tf.math.floor(remain_c / 2), tf.math.ceil(remain_c / 2)], [0, 0]]
 
-        # image = tf.pad(image, paddings=paddings, constant_values=tf.reduce_min(image, dtype=image.dtype))
-        # annotation = tf.pad(annotation, paddings=paddings, constant_values=tf.reduce_min(image, dtype=annotation.dtype))
-        image = tf.pad(image, paddings=paddings, constant_values=tf.reduce_min(image, dtype=image.dtype))
-        annotation = tf.pad(annotation, paddings=paddings, constant_values=tf.reduce_min(image, dtype=annotation.dtype))
+        image = tf.pad(image, paddings=paddings, constant_values=tf.reduce_min(image))
+        annotation = tf.pad(annotation, paddings=paddings, constant_values=tf.reduce_min(image))
 
         input_features[self.image_key] = image
         input_features[self.annotation_key] = annotation
