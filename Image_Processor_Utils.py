@@ -1118,7 +1118,7 @@ class Per_Image_MinMax_Normalization(ImageProcessor):
 
 class Random_Crop_and_Resize(ImageProcessor):
     def __init__(self, min_scale=0.80, image_rows=512, image_cols=512, image_keys=('image', 'annotation'),
-                 interp=('bilinear', 'nearest'), preserve_aspect_ratio=True):
+                 interp=('bilinear', 'nearest'), dtypes=('float16', 'float16'), preserve_aspect_ratio=True):
         '''
         :param min_scale:
         :param image_rows:
@@ -1132,6 +1132,7 @@ class Random_Crop_and_Resize(ImageProcessor):
         self.scales = np.linspace(start=min_scale, stop=1.0, num=20)
         self.image_keys = image_keys
         self.interp = interp
+        self.dtypes = dtypes
         self.preserve_aspect_ratio = preserve_aspect_ratio
 
     def parse(self, input_features, *args, **kwargs):
@@ -1139,10 +1140,11 @@ class Random_Crop_and_Resize(ImageProcessor):
         random_index = np.random.randint(0, len(self.scales))
         scale = self.scales[random_index]
         if scale != 1.0:
-            for key, method in zip(self.image_keys, self.interp):
+            for key, method, dtype in zip(self.image_keys, self.interp, self.dtypes):
                 croppped_img = tf.image.central_crop(input_features[key], scale)
-                input_features[key] = tf.image.resize(croppped_img, size=(self.image_rows, self.image_cols),
+                croppped_img = tf.image.resize(croppped_img, size=(self.image_rows, self.image_cols),
                                                       method=method, preserve_aspect_ratio=self.preserve_aspect_ratio)
+                input_features[key] = tf.cast(croppped_img, dtype=dtype)
 
         return input_features
 
@@ -1234,8 +1236,10 @@ class Extract_Patch(ImageProcessor):
                     [tf.math.floor(remain_r / 2), tf.math.ceil(remain_r / 2)],
                     [tf.math.floor(remain_c / 2), tf.math.ceil(remain_c / 2)], [0, 0]]
 
-        image = tf.pad(image, paddings=paddings, constant_values=tf.reduce_min(image))
-        annotation = tf.pad(annotation, paddings=paddings, constant_values=tf.reduce_min(image))
+        # image = tf.pad(image, paddings=paddings, constant_values=tf.reduce_min(image, dtype=image.dtype))
+        # annotation = tf.pad(annotation, paddings=paddings, constant_values=tf.reduce_min(image, dtype=annotation.dtype))
+        image = tf.pad(image, paddings=paddings, constant_values=tf.reduce_min(image, dtype=image.dtype))
+        annotation = tf.pad(annotation, paddings=paddings, constant_values=tf.reduce_min(image, dtype=annotation.dtype))
 
         input_features[self.image_key] = image
         input_features[self.annotation_key] = annotation
