@@ -880,6 +880,14 @@ class Combine_Annotations_To_Mask(ImageProcessor):
         input_features['mask'] = annotation
         return input_features
 
+class Mask_Image(ImageProcessor):
+    def __init__(self, masked_value=0):
+        self.masked_value = masked_value
+
+    def parse(self, image_features):
+        mask = image_features['mask']
+        image_features['image'] = tf.where(mask == 0, tf.cast(self.masked_value, dtype=image_features['image'].dtype), image_features['image'])
+        return image_features
 
 class Per_Patient_ZNorm(ImageProcessor):
 
