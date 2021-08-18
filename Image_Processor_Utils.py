@@ -886,6 +886,7 @@ class Mask_Image(ImageProcessor):
 
     def parse(self, image_features):
         mask = image_features['mask']
+        mask = tf.expand_dims(mask, axis=-1)
         image_features['image'] = tf.where(mask == 0, tf.cast(self.masked_value, dtype=image_features['image'].dtype), image_features['image'])
         return image_features
 
