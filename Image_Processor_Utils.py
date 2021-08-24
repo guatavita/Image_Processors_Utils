@@ -757,15 +757,22 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
     return z_start, z_stop, r_start, r_stop, c_start, c_stop
 
 
-def get_bounding_boxes(annotation_handle, value):
-    Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
-    RelabelComponent = sitk.RelabelComponentImageFilter()
-    RelabelComponent.SortByObjectSizeOn()
+def get_bounding_boxes(annotation_handle, value, extract_comp=True):
     stats = sitk.LabelShapeStatisticsImageFilter()
-    thresholded_image = sitk.BinaryThreshold(annotation_handle, lowerThreshold=value, upperThreshold=value + 1)
-    connected_image = Connected_Component_Filter.Execute(thresholded_image)
-    connected_image = RelabelComponent.Execute(connected_image)
-    stats.Execute(connected_image)
+    if extract_comp:
+        Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+        RelabelComponent = sitk.RelabelComponentImageFilter()
+        RelabelComponent.SortByObjectSizeOn()
+        thresholded_image = sitk.BinaryThreshold(annotation_handle, lowerThreshold=value, upperThreshold=value + 1)
+        connected_image = Connected_Component_Filter.Execute(thresholded_image)
+        connected_image = RelabelComponent.Execute(connected_image)
+        stats.Execute(connected_image)
+    else:
+        Cast_Image_Filter = sitk.CastImageFilter()
+        Cast_Image_Filter.SetNumberOfThreads(0)
+        Cast_Image_Filter.SetOutputPixelType(sitk.sitkUInt32)
+        casted_image = Cast_Image_Filter.Execute(annotation_handle)
+        stats.Execute(casted_image)
     bounding_boxes = [stats.GetBoundingBox(l) for l in stats.GetLabels()]
     num_voxels = np.asarray([stats.GetNumberOfPixels(l) for l in stats.GetLabels()]).astype('float32')
     return bounding_boxes, num_voxels
@@ -788,7 +795,7 @@ def add_bounding_box_to_dict(bounding_box, input_features=None, val=None, return
 
 
 class Add_Bounding_Box_Indexes(ImageProcessor):
-    def __init__(self, wanted_vals_for_bbox=None, add_to_dictionary=False, label_name='annotation'):
+    def __init__(self, wanted_vals_for_bbox=None, add_to_dictionary=False, label_name='annotation', extract_comp=True):
         '''
         :param wanted_vals_for_bbox: a list of values in integer form for bboxes
         '''
@@ -796,6 +803,7 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
         self.wanted_vals_for_bbox = wanted_vals_for_bbox
         self.add_to_dictionary = add_to_dictionary
         self.label_name = label_name
+        self.extract_comp = extract_comp
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.label_name)
@@ -809,7 +817,7 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
                 annotation = annotation_base
             slices = np.where(annotation == temp_val)
             if slices:
-                bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val)
+                bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val, extract_comp=self.extract_comp)
                 input_features['voxel_volumes_{}'.format(val)] = voxel_volumes
                 input_features['bounding_boxes_{}'.format(val)] = bounding_boxes
                 input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=bounding_boxes[0],
@@ -821,7 +829,7 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
 class Box_Images(ImageProcessor):
     def __init__(self, bounding_box_expansion, image_keys=('image',), annotation_key='annotation', wanted_vals_for_bbox=None,
                  power_val_z=1, power_val_r=1, power_val_c=1, min_images=None, min_rows=None, min_cols=None,
-                 post_process_keys=('image', 'annotation', 'prediction'), pad_value=None):
+                 post_process_keys=('image', 'annotation', 'prediction'), pad_value=None, extract_comp=True):
         """
         :param image_keys: keys which corresponds to an image to be normalized
         :param annotation_key: key which corresponds to an annotation image used for normalization
@@ -842,6 +850,7 @@ class Box_Images(ImageProcessor):
         self.image_keys, self.annotation_key = image_keys, annotation_key
         self.post_process_keys = post_process_keys
         self.pad_value = pad_value
+        self.extract_comp = extract_comp
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.image_keys + (self.annotation_key,))
@@ -856,7 +865,7 @@ class Box_Images(ImageProcessor):
             for val in self.wanted_vals_for_bbox:
                 mask[annotation == val] = 1
         for val in [1]:
-            add_indexes = Add_Bounding_Box_Indexes([val], label_name='mask')
+            add_indexes = Add_Bounding_Box_Indexes([val], label_name='mask', extract_comp=self.extract_comp)
             input_features['mask'] = mask
             add_indexes.pre_process(input_features)
             del input_features['mask']
