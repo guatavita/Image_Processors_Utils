@@ -736,6 +736,25 @@ class CombinePredictions(ImageProcessor):
         return input_features
 
 
+class ZNorm_By_Annotation(ImageProcessor):
+    def __init__(self, image_key='image', annotation_key='annotation'):
+        self.image_key = image_key
+        self.annotation_key = annotation_key
+
+    def pre_process(self, input_features):
+        input_features['mean'] = np.mean(input_features[self.image_key][input_features[self.annotation_key] > 0])
+        input_features['std'] = np.std(input_features[self.image_key][input_features[self.annotation_key] > 0])
+        mean_val = input_features['mean']
+        std_val = input_features['std']
+        image = input_features[self.image_key]
+        image = (image - mean_val) / std_val
+        input_features[self.image_key] = image
+        return input_features
+
+    def post_process(self, input_features):
+        return input_features
+
+
 class Normalize_Images(ImageProcessor):
     def __init__(self, keys=('image',), mean_values=(0,), std_values=(1,), ):
         """
@@ -882,6 +901,15 @@ class Combine_Annotations_To_Mask(ImageProcessor):
         input_features[self.output_key] = annotation
         return input_features
 
+class Mask_Image(ImageProcessor):
+    def __init__(self, masked_value=0):
+        self.masked_value = masked_value
+
+    def parse(self, image_features):
+        mask = image_features['mask']
+        mask = tf.expand_dims(mask, axis=-1)
+        image_features['image'] = tf.where(mask == 0, tf.cast(self.masked_value, dtype=image_features['image'].dtype), image_features['image'])
+        return image_features
 
 class Per_Patient_ZNorm(ImageProcessor):
 
