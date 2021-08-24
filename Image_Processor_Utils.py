@@ -863,12 +863,14 @@ class Remove_Annotations(ImageProcessor):
 
 
 class Combine_Annotations_To_Mask(ImageProcessor):
-    def __init__(self, annotation_input=[1, 2], to_annotation=1):
+    def __init__(self, annotation_input=[1, 2], to_annotation=1, annotation_key='annotation', output_key='mask'):
         self.annotation_input = annotation_input
         self.to_annotation = to_annotation
+        self.annotation_key = annotation_key
+        self.output_key = output_key
 
     def pre_process(self, input_features):
-        annotation = copy.deepcopy(input_features['annotation'])
+        annotation = copy.deepcopy(input_features[self.annotation_key])
         assert len(annotation.shape) == 3 or len(
             annotation.shape) == 4, 'To combine annotations the size has to be 3 or 4'
         if len(annotation.shape) == 3:
@@ -877,7 +879,7 @@ class Combine_Annotations_To_Mask(ImageProcessor):
         elif len(annotation.shape) == 4:
             annotation[..., self.to_annotation] += annotation[..., self.annotation_input]
             del annotation[..., self.annotation_input]
-        input_features['mask'] = annotation
+        input_features[self.output_key] = annotation
         return input_features
 
 
