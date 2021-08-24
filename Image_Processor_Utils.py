@@ -20,6 +20,7 @@ from queue import *
 
 import time
 
+
 class ImageProcessor(object):
     def parse(self, *args, **kwargs):
         return args, kwargs
@@ -736,6 +737,227 @@ class CombinePredictions(ImageProcessor):
         return input_features
 
 
+def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annotation_shape, bounding_box_expansion):
+    if len(bounding_box_expansion) == 3:
+        z_start = max([0, z_start - floor(bounding_box_expansion[0] / 2)])
+        z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[0] / 2)])
+        r_start = max([0, r_start - floor(bounding_box_expansion[1] / 2)])
+        r_stop = min([annotation_shape[1], r_stop + ceil(bounding_box_expansion[1] / 2)])
+        c_start = max([0, c_start - floor(bounding_box_expansion[2] / 2)])
+        c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[2] / 2)])
+    elif len(bounding_box_expansion) == 6:
+        z_start = max([0, z_start - floor(bounding_box_expansion[0] / 2)])
+        z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[1] / 2)])
+        r_start = max([0, r_start - floor(bounding_box_expansion[2] / 2)])
+        r_stop = min([annotation_shape[1], r_stop + ceil(bounding_box_expansion[3] / 2)])
+        c_start = max([0, c_start - floor(bounding_box_expansion[4] / 2)])
+        c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[5] / 2)])
+    else:
+        raise ValueError("bounding_box_expansion should be a tuple of len 3 or 6")
+    return z_start, z_stop, r_start, r_stop, c_start, c_stop
+
+
+def get_bounding_boxes(annotation_handle, value):
+    Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+    RelabelComponent = sitk.RelabelComponentImageFilter()
+    RelabelComponent.SortByObjectSizeOn()
+    stats = sitk.LabelShapeStatisticsImageFilter()
+    thresholded_image = sitk.BinaryThreshold(annotation_handle, lowerThreshold=value, upperThreshold=value + 1)
+    connected_image = Connected_Component_Filter.Execute(thresholded_image)
+    connected_image = RelabelComponent.Execute(connected_image)
+    stats.Execute(connected_image)
+    bounding_boxes = [stats.GetBoundingBox(l) for l in stats.GetLabels()]
+    num_voxels = np.asarray([stats.GetNumberOfPixels(l) for l in stats.GetLabels()]).astype('float32')
+    return bounding_boxes, num_voxels
+
+
+def add_bounding_box_to_dict(bounding_box, input_features=None, val=None, return_indexes=False,
+                             add_to_dictionary=False):
+    c_start, r_start, z_start, c_stop, r_stop, z_stop = bounding_box
+    z_stop, r_stop, c_stop = z_start + z_stop, r_start + r_stop, c_start + c_stop
+    if return_indexes:
+        return z_start, z_stop, r_start, r_stop, c_start, c_stop
+    if add_to_dictionary:
+        input_features['bounding_boxes_z_start_{}'.format(val)] = z_start
+        input_features['bounding_boxes_r_start_{}'.format(val)] = r_start
+        input_features['bounding_boxes_c_start_{}'.format(val)] = c_start
+        input_features['bounding_boxes_z_stop_{}'.format(val)] = z_stop
+        input_features['bounding_boxes_r_stop_{}'.format(val)] = r_stop
+        input_features['bounding_boxes_c_stop_{}'.format(val)] = c_stop
+    return input_features
+
+
+class Add_Bounding_Box_Indexes(ImageProcessor):
+    def __init__(self, wanted_vals_for_bbox=None, add_to_dictionary=False, label_name='annotation'):
+        '''
+        :param wanted_vals_for_bbox: a list of values in integer form for bboxes
+        '''
+        assert type(wanted_vals_for_bbox) is list, 'Provide a list for bboxes'
+        self.wanted_vals_for_bbox = wanted_vals_for_bbox
+        self.add_to_dictionary = add_to_dictionary
+        self.label_name = label_name
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.label_name)
+        annotation_base = input_features[self.label_name]
+        for val in self.wanted_vals_for_bbox:
+            temp_val = val
+            if len(annotation_base.shape) > 3:
+                annotation = (annotation_base[..., val] > 0).astype('int')
+                temp_val = 1
+            else:
+                annotation = annotation_base
+            slices = np.where(annotation == temp_val)
+            if slices:
+                bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val)
+                input_features['voxel_volumes_{}'.format(val)] = voxel_volumes
+                input_features['bounding_boxes_{}'.format(val)] = bounding_boxes
+                input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=bounding_boxes[0],
+                                                          val=val, return_indexes=False,
+                                                          add_to_dictionary=self.add_to_dictionary)
+        return input_features
+
+
+class Box_Images(ImageProcessor):
+    def __init__(self, bounding_box_expansion, image_keys=('image',), annotation_key='annotation', wanted_vals_for_bbox=None,
+                 power_val_z=1, power_val_r=1, power_val_c=1, min_images=None, min_rows=None, min_cols=None,
+                 post_process_keys=('image', 'annotation', 'prediction'), pad_value=None):
+        """
+        :param image_keys: keys which corresponds to an image to be normalized
+        :param annotation_key: key which corresponds to an annotation image used for normalization
+        :param wanted_vals_for_bbox:
+        :param bounding_box_expansion:
+        :param power_val_z:
+        :param power_val_r:
+        :param power_val_c:
+        :param min_images:
+        :param min_rows:
+        :param min_cols:
+        """
+        assert type(wanted_vals_for_bbox) in [list, tuple], 'Provide a list for bboxes'
+        self.wanted_vals_for_bbox = wanted_vals_for_bbox
+        self.bounding_box_expansion = bounding_box_expansion
+        self.power_val_z, self.power_val_r, self.power_val_c = power_val_z, power_val_r, power_val_c
+        self.min_images, self.min_rows, self.min_cols = min_images, min_rows, min_cols
+        self.image_keys, self.annotation_key = image_keys, annotation_key
+        self.post_process_keys = post_process_keys
+        self.pad_value = pad_value
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.image_keys + (self.annotation_key,))
+        annotation = input_features[self.annotation_key]
+        if len(annotation.shape) > 3:
+            mask = np.zeros(annotation.shape[:-1])
+            argmax_annotation = np.argmax(annotation, axis=-1)
+            for val in self.wanted_vals_for_bbox:
+                mask[argmax_annotation == val] = 1
+        else:
+            mask = np.zeros(annotation.shape)
+            for val in self.wanted_vals_for_bbox:
+                mask[annotation == val] = 1
+        for val in [1]:
+            add_indexes = Add_Bounding_Box_Indexes([val], label_name='mask')
+            input_features['mask'] = mask
+            add_indexes.pre_process(input_features)
+            del input_features['mask']
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = add_bounding_box_to_dict(
+                input_features['bounding_boxes_{}'.format(val)][0], return_indexes=True)
+
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   self.bounding_box_expansion)
+
+            z_total, r_total, c_total = z_stop - z_start, r_stop - r_start, c_stop - c_start
+            remainder_z, remainder_r, remainder_c = self.power_val_z - z_total % self.power_val_z if z_total % self.power_val_z != 0 else 0, \
+                                                    self.power_val_r - r_total % self.power_val_r if r_total % self.power_val_r != 0 else 0, \
+                                                    self.power_val_c - c_total % self.power_val_c if c_total % self.power_val_c != 0 else 0
+            remainders = np.asarray([remainder_z, remainder_r, remainder_c])
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=
+                                                                                   annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   remainders)
+            min_images, min_rows, min_cols = z_total + remainder_z, r_total + remainder_r, c_total + remainder_c
+            remainders = [0, 0, 0]
+            if self.min_images is not None:
+                remainders[0] = max([0, self.min_images - min_images])
+                min_images = max([min_images, self.min_images])
+            if self.min_rows is not None:
+                remainders[1] = max([0, self.min_rows - min_rows])
+                min_rows = max([min_rows, self.min_rows])
+            if self.min_cols is not None:
+                remainders[2] = max([0, self.min_cols - min_cols])
+                min_cols = max([min_cols, self.min_cols])
+            remainders = np.asarray(remainders)
+            z_start, z_stop, r_start, r_stop, c_start, c_stop = expand_box_indexes(z_start, z_stop, r_start, r_stop,
+                                                                                   c_start, c_stop,
+                                                                                   annotation_shape=
+                                                                                   annotation.shape,
+                                                                                   bounding_box_expansion=
+                                                                                   remainders)
+            input_features['z_r_c_start'] = [z_start, r_start, c_start]
+            for key in self.image_keys:
+                image = input_features[key]
+                input_features['og_shape'] = image.shape
+                input_features['og_shape_{}'.format(key)] = image.shape
+                image_cube = image[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+                img_shape = image_cube.shape
+                pads = [min_images - img_shape[0], min_rows - img_shape[1], min_cols - img_shape[2]]
+                pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+                if self.pad_value is not None:
+                    pad_value = self.pad_value
+                else:
+                    pad_value = np.min(image_cube)
+                while len(image_cube.shape) > len(pads):
+                    pads += [[0, 0]]
+                image_cube = np.pad(image_cube, pads, constant_values=pad_value)
+                input_features[key] = image_cube.astype(image.dtype)
+                input_features['pads'] = [pads[i][0] for i in range(3)]
+            annotation_cube = annotation[z_start:z_stop, r_start:r_stop, c_start:c_stop]
+            pads = [min_images - annotation_cube.shape[0], min_rows - annotation_cube.shape[1],
+                    min_cols - annotation_cube.shape[2]]
+            if len(annotation.shape) > 3:
+                pads = np.append(pads, [0])
+            pads = [[max([0, floor(i / 2)]), max([0, ceil(i / 2)])] for i in pads]
+            annotation_cube = np.pad(annotation_cube, pads)
+            if len(annotation.shape) > 3:
+                annotation_cube[..., 0] = 1 - np.sum(annotation_cube[..., 1:], axis=-1)
+            input_features[self.annotation_key] = annotation_cube.astype(annotation.dtype)
+        return input_features
+
+    def post_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.post_process_keys)
+        for key in self.post_process_keys:
+            image = input_features[key]
+            pads = input_features['pads']
+            image = image[pads[0]:, pads[1]:, pads[2]:, ...]
+            pads = [(i, 0) for i in input_features['z_r_c_start']]
+            while len(image.shape) > len(pads):
+                pads += [(0, 0)]
+            image = np.pad(image, pads, constant_values=np.min(image))
+            og_shape = input_features['og_shape']
+            im_shape = image.shape
+            if im_shape[0] > og_shape[0]:
+                dif = og_shape[0] - im_shape[0]
+                image = image[:dif]
+            if im_shape[1] > og_shape[1]:
+                dif = og_shape[1] - im_shape[1]
+                image = image[:, :dif]
+            if im_shape[2] > og_shape[2]:
+                dif = og_shape[2] - im_shape[2]
+                image = image[:, :, :dif]
+            im_shape = image.shape
+            pads = [(0, og_shape[0] - im_shape[0]), (0, og_shape[1] - im_shape[1]), (0, og_shape[2] - im_shape[2])]
+            if len(image.shape) > 3:
+                pads += [(0, 0)]
+            image = np.pad(image, pads, constant_values=np.min(image))
+            input_features[key] = image
+        return input_features
+
+
 class ZNorm_By_Annotation(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation'):
         self.image_key = image_key
@@ -901,6 +1123,7 @@ class Combine_Annotations_To_Mask(ImageProcessor):
         input_features[self.output_key] = annotation
         return input_features
 
+
 class Mask_Image(ImageProcessor):
     def __init__(self, masked_value=0):
         self.masked_value = masked_value
@@ -908,8 +1131,10 @@ class Mask_Image(ImageProcessor):
     def parse(self, image_features):
         mask = image_features['mask']
         mask = tf.expand_dims(mask, axis=-1)
-        image_features['image'] = tf.where(mask == 0, tf.cast(self.masked_value, dtype=image_features['image'].dtype), image_features['image'])
+        image_features['image'] = tf.where(mask == 0, tf.cast(self.masked_value, dtype=image_features['image'].dtype),
+                                           image_features['image'])
         return image_features
+
 
 class Per_Patient_ZNorm(ImageProcessor):
 
@@ -1138,13 +1363,14 @@ class Per_Image_MinMax_Normalization(ImageProcessor):
             image = input_features[key]
             min_value = np.min(image)
             max_value = np.max(image)
-            image = (image-min_value)/(max_value-min_value)
+            image = (image - min_value) / (max_value - min_value)
             image = image * self.threshold_value
             input_features[key] = image
         return input_features
 
     def post_process(self, input_features):
         return input_features
+
 
 class Random_Crop_and_Resize(ImageProcessor):
     def __init__(self, min_scale=0.80, image_rows=512, image_cols=512, image_keys=('image', 'annotation'),
@@ -1173,7 +1399,7 @@ class Random_Crop_and_Resize(ImageProcessor):
             for key, method, dtype in zip(self.image_keys, self.interp, self.dtypes):
                 croppped_img = tf.image.central_crop(input_features[key], scale)
                 croppped_img = tf.image.resize(croppped_img, size=(self.image_rows, self.image_cols),
-                                                      method=method, preserve_aspect_ratio=self.preserve_aspect_ratio)
+                                               method=method, preserve_aspect_ratio=self.preserve_aspect_ratio)
                 input_features[key] = tf.cast(croppped_img, dtype=dtype)
 
         return input_features
@@ -1337,7 +1563,8 @@ class ProcessPrediction(ImageProcessor):
                             dist = self.dist.get(str(class_id))
                             max_comp = self.max_comp.get(str(class_id))
                             min_vol = self.min_vol.get(str(class_id))
-                            pred_id = extract_main_component(nparray=pred_id, dist=dist, max_comp=max_comp, min_vol=min_vol)
+                            pred_id = extract_main_component(nparray=pred_id, dist=dist, max_comp=max_comp,
+                                                             min_vol=min_vol)
 
                         if connectivity_val:
                             main_component_filter = Remove_Smallest_Structures()
