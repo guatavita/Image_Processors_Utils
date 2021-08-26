@@ -124,7 +124,15 @@ def extract_main_component(nparray, dist=50, max_comp=2, min_vol=2000):
             ref_volume = np.copy(labels)
             ref_volume[ref_volume != max_val] = 0
             ref_volume[ref_volume > 0] = 1
-            ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
+            temp_volume = ref_volume[ref_volume == 1].shape[0]
+            # volume of largest comp is too small
+            if temp_volume < min_vol:
+                return nparray
+            try:
+                ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
+            except:
+                # volume of largest comp is too small and make the marching cube fails
+                return nparray
 
         for i in range(1, labels.max() + 1):
             if i == max_val:
@@ -699,15 +707,22 @@ class CreateUpperVagina(ImageProcessor):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for key, class_id, sup_margin in zip(self.prediction_keys, self.class_id, self.sup_margin):
             prediction = input_features[key]
-            min_slice, max_slice, min_row, max_row, min_col, max_col = compute_bounding_box(prediction[..., class_id],
-                                                                                            padding=0)
-            spacing = input_features['spacing']
-            nb_slices = ceil(sup_margin / spacing[-1])
-            new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
-            new_prediction[..., 0:prediction.shape[-1]] = prediction
-            new_prediction[..., -1][(max_slice + 1 - nb_slices):(max_slice + 1), ...] = new_prediction[..., class_id][
-                                                                                        (max_slice + 1 - nb_slices):(
-                                                                                                max_slice + 1), ...]
+            # test if prediction class id is empty
+            if np.any(prediction[..., class_id]):
+                min_slice, max_slice, min_row, max_row, min_col, max_col = compute_bounding_box(
+                    prediction[..., class_id],
+                    padding=0)
+                spacing = input_features['spacing']
+                nb_slices = ceil(sup_margin / spacing[-1])
+                new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
+                new_prediction[..., 0:prediction.shape[-1]] = prediction
+                new_prediction[..., -1][(max_slice + 1 - nb_slices):(max_slice + 1), ...] = \
+                    new_prediction[..., class_id][(max_slice + 1 - nb_slices):(max_slice + 1), ...]
+            else:
+                # create empty class
+                new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
+                new_prediction[..., 0:prediction.shape[-1]] = prediction
+
             input_features[key] = new_prediction
         return input_features
 
@@ -817,7 +832,8 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
                 annotation = annotation_base
             slices = np.where(annotation == temp_val)
             if slices:
-                bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val, extract_comp=self.extract_comp)
+                bounding_boxes, voxel_volumes = get_bounding_boxes(sitk.GetImageFromArray(annotation), temp_val,
+                                                                   extract_comp=self.extract_comp)
                 input_features['voxel_volumes_{}'.format(val)] = voxel_volumes
                 input_features['bounding_boxes_{}'.format(val)] = bounding_boxes
                 input_features = add_bounding_box_to_dict(input_features=input_features, bounding_box=bounding_boxes[0],
@@ -827,7 +843,8 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
 
 
 class Box_Images(ImageProcessor):
-    def __init__(self, bounding_box_expansion, image_keys=('image',), annotation_key='annotation', wanted_vals_for_bbox=None,
+    def __init__(self, bounding_box_expansion, image_keys=('image',), annotation_key='annotation',
+                 wanted_vals_for_bbox=None,
                  power_val_z=1, power_val_r=1, power_val_c=1, min_images=None, min_rows=None, min_cols=None,
                  post_process_keys=('image', 'annotation', 'prediction'), pad_value=None, extract_comp=True):
         """
