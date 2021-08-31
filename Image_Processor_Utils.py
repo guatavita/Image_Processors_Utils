@@ -984,6 +984,24 @@ class Box_Images(ImageProcessor):
         return input_features
 
 
+class Duplicate_Prediction(ImageProcessor):
+    def __init__(self, prediction_key='prediction'):
+        self.prediction_key = prediction_key
+
+    def pre_process(self, input_features):
+        prediction = input_features[self.prediction_key]
+        if prediction.shape[-1] != 2:
+            assert ValueError("Prediction shape should be 2 for binary class prediction (background and output class)")
+
+        new_prediction = np.zeros(prediction.shape[0:-1] + (prediction.shape[-1] + 1,), dtype=prediction.dtype)
+        # copy current prediction to new array
+        new_prediction[..., 0:prediction.shape[-1]] = prediction
+        # duplicate last dim
+        new_prediction[..., -1] = prediction[..., -1]
+        input_features[self.prediction_key] = new_prediction
+        return input_features
+
+
 class ZNorm_By_Annotation(ImageProcessor):
     def __init__(self, image_key='image', annotation_key='annotation'):
         self.image_key = image_key
