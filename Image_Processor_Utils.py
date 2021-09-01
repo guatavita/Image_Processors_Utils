@@ -127,12 +127,14 @@ def extract_main_component(nparray, dist=50, max_comp=2, min_vol=2000):
             temp_volume = ref_volume[ref_volume == 1].shape[0]
             # volume of largest comp is too small
             if temp_volume < min_vol:
-                return nparray
-            try:
-                ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
-            except:
-                # volume of largest comp is too small and make the marching cube fails
-                return nparray
+                return temp_img
+            else:
+                try:
+                    ref_points = measure.marching_cubes(ref_volume, step_size=3, method='lewiner')[0]
+                except:
+                    # volume of largest comp is too small and make the marching cube fails
+                    print(" Warning: volume of largest comp is too small for marching cube")
+                    dist = False
 
         for i in range(1, labels.max() + 1):
             if i == max_val:
