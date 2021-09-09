@@ -325,7 +325,7 @@ class CreateExternal(ImageProcessor):
 
 
 class Focus_on_CT(ImageProcessor):
-    def __init__(self, threshold_value=-250.0, mask_value=1, debug=False):
+    def __init__(self, threshold_value=-250.0, mask_value=1, debug=False, annotation = False):
         # TODO this class needs to be cleaned
         self.threshold_value = threshold_value
         self.mask_value = mask_value
@@ -334,10 +334,10 @@ class Focus_on_CT(ImageProcessor):
         self.original_shape = {}
         self.squeeze_flag = False
         self.debug = debug
+        self.annotation = annotation
 
     def pre_process(self, input_features):
         images = input_features['image']
-        annotations = None
         if images.dtype != 'float32':
             images = images.astype('float32')
 
@@ -357,12 +357,13 @@ class Focus_on_CT(ImageProcessor):
         if self.squeeze_flag:
             rescaled_input_img = np.expand_dims(rescaled_input_img, axis=-1)
 
-        if annotations != None:
-            if annotations.dtype != 'float32':
-                annotations = annotations.astype('float32')
+        if self.annotation:
+            annotation = input_features['annotation']
+            if annotation.dtype != 'float32':
+                annotation = annotation.astype('float32')
             if self.squeeze_flag:
-                annotations = np.squeeze(annotations)
-            rescaled_input_label, self.final_padding = self.crop_resize_pad(input=annotations,
+                annotation = np.squeeze(annotation)
+            rescaled_input_label, self.final_padding = self.crop_resize_pad(input=annotation,
                                                                             bb_parameters=self.bb_parameters,
                                                                             image_rows=512,
                                                                             image_cols=512, interpolator='linear_label',
