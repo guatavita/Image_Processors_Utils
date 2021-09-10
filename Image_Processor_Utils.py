@@ -217,29 +217,66 @@ def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
 
 
 class compute_binary_metrics(object):
-    def __init__(self, input1, input2):
+    def __init__(self, input1, input2, img_dtype=sitk.sitkUInt8):
+        if isinstance(input1, np.ndarray):
+            if input1.shape[-1] == 1:
+                input1 = np.squeeze(input1, axis=-1)
+            input1 = sitk.GetImageFromArray(input1)
+
+        if isinstance(input2, np.ndarray):
+            if input2.shape[-1] == 1:
+                input2 = np.squeeze(input2, axis=-1)
+            input2 = sitk.GetImageFromArray(input2)
+
+        if input1.GetPixelIDValue() != img_dtype:
+            cast_filter = sitk.CastImageFilter()
+            cast_filter.SetOutputPixelType(img_dtype)
+            input1 = cast_filter.Execute(input1)
+
+        if input2.GetPixelIDValue() != img_dtype:
+            cast_filter = sitk.CastImageFilter()
+            cast_filter.SetOutputPixelType(img_dtype)
+            input2 = cast_filter.Execute(input2)
+
         self.metric_filter = sitk.LabelOverlapMeasuresImageFilter()
         self.metric_filter.SetNumberOfThreads(0)
         self.metric_filter.Execute(input1, input2)
 
     def get_dice(self):
-        return(self.metric_filter.GetDiceCoefficient())
+        return (self.metric_filter.GetDiceCoefficient())
 
     def get_jaccard(self):
-        return(self.metric_filter.GetJaccardCoefficient())
+        return (self.metric_filter.GetJaccardCoefficient())
 
 
 class compute_distance_metrics(object):
     def __init__(self, input1, input2):
+        if isinstance(input1, np.ndarray):
+            input1 = sitk.GetImageFromArray(input1)
+
+        if isinstance(input2, np.ndarray):
+            input2 = sitk.GetImageFromArray(input2)
+
+        if input1.GetPixelIDValue() != sitk.sitkUInt8:
+            cast_filter = sitk.CastImageFilter()
+            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+            input1 = cast_filter.Execute(input1)
+
+        if input2.GetPixelIDValue() != sitk.sitkUInt8:
+            cast_filter = sitk.CastImageFilter()
+            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+            input2 = cast_filter.Execute(input2)
+
         self.metric_filter = sitk.HausdorffDistanceImageFilter()
         self.metric_filter.SetNumberOfThreads(0)
         self.metric_filter.Execute(input1, input2)
 
     def get_hd(self):
-        return(self.metric_filter.GetHausdorffDistance())
+        return (self.metric_filter.GetHausdorffDistance())
 
     def get_avg_hd(self):
-        return(self.metric_filter.GetAverageHausdorffDistance())
+        return (self.metric_filter.GetAverageHausdorffDistance())
+
 
 class Remove_Smallest_Structures(object):
     def __init__(self):
@@ -350,7 +387,7 @@ class CreateExternal(ImageProcessor):
 
 
 class Focus_on_CT(ImageProcessor):
-    def __init__(self, threshold_value=-250.0, mask_value=1, debug=False, annotation = False):
+    def __init__(self, threshold_value=-250.0, mask_value=1, debug=False, annotation=False):
         # TODO this class needs to be cleaned
         self.threshold_value = threshold_value
         self.mask_value = mask_value
@@ -408,6 +445,12 @@ class Focus_on_CT(ImageProcessor):
                                                   bb_parameters=self.bb_parameters, final_padding=self.final_padding,
                                                   interpolator='cubic', empty_value='air')
             input_features['image'] = recovered_img
+
+        if self.annotation:
+            recovered_annotation = self.recover_original(resize_image=input_features['annotation'], original_shape=self.original_shape,
+                                                  bb_parameters=self.bb_parameters, final_padding=self.final_padding,
+                                                  interpolator='linear_label', empty_value='zero')
+            input_features['image'] = recovered_annotation
 
         recovered_pred = self.recover_original_hot(resize_image=pred, original_shape=self.original_shape,
                                                    bb_parameters=self.bb_parameters, final_padding=self.final_padding,
