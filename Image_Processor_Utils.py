@@ -450,7 +450,7 @@ class Focus_on_CT(ImageProcessor):
             recovered_annotation = self.recover_original(resize_image=input_features['annotation'], original_shape=self.original_shape,
                                                   bb_parameters=self.bb_parameters, final_padding=self.final_padding,
                                                   interpolator='linear_label', empty_value='zero')
-            input_features['image'] = recovered_annotation
+            input_features['annotation'] = recovered_annotation
 
         recovered_pred = self.recover_original_hot(resize_image=pred, original_shape=self.original_shape,
                                                    bb_parameters=self.bb_parameters, final_padding=self.final_padding,
