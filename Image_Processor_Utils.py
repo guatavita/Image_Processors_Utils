@@ -216,6 +216,31 @@ def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
     return input_img
 
 
+class compute_binary_metrics(object):
+    def __init__(self, input1, input2):
+        self.metric_filter = sitk.LabelOverlapMeasuresImageFilter()
+        self.metric_filter.SetNumberOfThreads(0)
+        self.metric_filter.Execute(input1, input2)
+
+    def get_dice(self):
+        return(self.metric_filter.GetDiceCoefficient())
+
+    def get_jaccard(self):
+        return(self.metric_filter.GetJaccardCoefficient())
+
+
+class compute_distance_metrics(object):
+    def __init__(self, input1, input2):
+        self.metric_filter = sitk.HausdorffDistanceImageFilter()
+        self.metric_filter.SetNumberOfThreads(0)
+        self.metric_filter.Execute(input1, input2)
+
+    def get_hd(self):
+        return(self.metric_filter.GetHausdorffDistance())
+
+    def get_avg_hd(self):
+        return(self.metric_filter.GetAverageHausdorffDistance())
+
 class Remove_Smallest_Structures(object):
     def __init__(self):
         self.Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
