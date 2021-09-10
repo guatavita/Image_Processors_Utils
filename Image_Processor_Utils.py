@@ -250,21 +250,25 @@ class compute_binary_metrics(object):
 
 
 class compute_distance_metrics(object):
-    def __init__(self, input1, input2):
+    def __init__(self, input1, input2, img_dtype=sitk.sitkUInt8):
         if isinstance(input1, np.ndarray):
+            if input1.shape[-1] == 1:
+                input1 = np.squeeze(input1, axis=-1)
             input1 = sitk.GetImageFromArray(input1)
 
         if isinstance(input2, np.ndarray):
+            if input2.shape[-1] == 1:
+                input2 = np.squeeze(input2, axis=-1)
             input2 = sitk.GetImageFromArray(input2)
 
-        if input1.GetPixelIDValue() != sitk.sitkUInt8:
+        if input1.GetPixelIDValue() != img_dtype:
             cast_filter = sitk.CastImageFilter()
-            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+            cast_filter.SetOutputPixelType(img_dtype)
             input1 = cast_filter.Execute(input1)
 
-        if input2.GetPixelIDValue() != sitk.sitkUInt8:
+        if input2.GetPixelIDValue() != img_dtype:
             cast_filter = sitk.CastImageFilter()
-            cast_filter.SetOutputPixelType(sitk.sitkUInt8)
+            cast_filter.SetOutputPixelType(img_dtype)
             input2 = cast_filter.Execute(input2)
 
         self.metric_filter = sitk.HausdorffDistanceImageFilter()
