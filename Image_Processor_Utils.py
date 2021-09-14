@@ -963,6 +963,8 @@ class Clip_Images_By_Extension(ImageProcessor):
             start, stop = self.get_start_stop(annotation, self.inf_extension, self.sup_extension)
             input_features['og_shape'] = image.shape
             input_features['og_shape_{}'.format(image_key)] = image.shape
+            input_features['start'] = start
+            input_features['stop'] = stop
             if start != -1 and stop != -1:
                 image, annotation = image[start:stop, ...], annotation[start:stop, ...]
             input_features[image_key] = image
@@ -973,18 +975,9 @@ class Clip_Images_By_Extension(ImageProcessor):
         for image_key in self.post_process_keys:
             og_shape = input_features['og_shape']
             image = input_features[image_key]
-            im_shape = image.shape
-            if im_shape[0] > og_shape[0]:
-                dif = og_shape[0] - im_shape[0]
-                image = image[:dif]
-            if im_shape[1] > og_shape[1]:
-                dif = og_shape[1] - im_shape[1]
-                image = image[:, :dif]
-            if im_shape[2] > og_shape[2]:
-                dif = og_shape[2] - im_shape[2]
-                image = image[:, :, :dif]
-            im_shape = image.shape
-            pads = [(0, og_shape[0] - im_shape[0]), (0, og_shape[1] - im_shape[1]), (0, og_shape[2] - im_shape[2])]
+            start = input_features['start']
+            stop = input_features['stop']
+            pads = [(start, og_shape[0]-stop), (0, 0), (0, 0)]
             if len(image.shape) > 3:
                 pads += [(0, 0)]
             image = np.pad(image, pads, constant_values=np.min(image))
