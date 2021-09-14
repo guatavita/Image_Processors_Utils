@@ -917,6 +917,48 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
         return input_features
 
 
+class Clip_Images_By_Extension(ImageProcessor):
+    def __init__(self, inf_extension=np.inf, sup_extension=np.inf, use_spacing=False,
+                 spacing_handle_key='primary_handle'):
+        '''
+        inf_extension: inferior extension (mm)
+        sup_extension: superior extension (mm)
+        use_spacing: flag if use spacing to convert mm to number of slice
+        spacing_handle_key: (if use_spacing==True) key to get the spacing list from the input_features dictionary
+        '''
+        self.inf_extension = inf_extension
+        self.sup_extension = sup_extension
+        self.use_spacing = use_spacing
+        self.spacing_handle_key = spacing_handle_key
+
+    def get_start_stop(self, annotation, inf_extension=np.inf, sup_extension=np.inf, desired_val=1):
+        if len(annotation.shape) > 3:
+            annotation = np.argmax(annotation, axis=-1)
+        non_zero_values = np.where(np.max(annotation, axis=(1, 2)) >= desired_val)[0]
+        start, stop = -1, -1
+        if non_zero_values.any():
+            start = int(non_zero_values[0])
+            stop = int(non_zero_values[-1])
+            start = max([start - inf_extension, 0])
+            stop = min([stop + sup_extension, annotation.shape[0]])
+        return start, stop
+
+    def pre_process(self, input_features):
+        image = input_features['image']
+        annotation = input_features['annotation']
+
+        if self.use_spacing:
+            self.inf_extension = self.inf_extension/input_features['spacing_handle_key'][-1]
+            self.sup_extension = self.sup_extension/input_features['spacing_handle_key'][-1]
+
+        start, stop = self.get_start_stop(annotation, self.inf_extension, self.sup_extension)
+        if start != -1 and stop != -1:
+            image, annotation = image[start:stop, ...], annotation[start:stop, ...]
+        input_features['image'] = image
+        input_features['annotation'] = annotation.astype('int8')
+        return input_features
+
+
 class Box_Images(ImageProcessor):
     def __init__(self, bounding_box_expansion, image_keys=('image',), annotation_key='annotation',
                  wanted_vals_for_bbox=None,
