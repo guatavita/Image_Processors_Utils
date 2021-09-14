@@ -838,12 +838,12 @@ def expand_box_indexes(z_start, z_stop, r_start, r_stop, c_start, c_stop, annota
         c_start = max([0, c_start - floor(bounding_box_expansion[2] / 2)])
         c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[2] / 2)])
     elif len(bounding_box_expansion) == 6:
-        z_start = max([0, z_start - floor(bounding_box_expansion[0] / 2)])
-        z_stop = min([annotation_shape[0], z_stop + ceil(bounding_box_expansion[1] / 2)])
-        r_start = max([0, r_start - floor(bounding_box_expansion[2] / 2)])
-        r_stop = min([annotation_shape[1], r_stop + ceil(bounding_box_expansion[3] / 2)])
-        c_start = max([0, c_start - floor(bounding_box_expansion[4] / 2)])
-        c_stop = min([annotation_shape[2], c_stop + ceil(bounding_box_expansion[5] / 2)])
+        z_start = max([0, z_start - bounding_box_expansion[0]])
+        z_stop = min([annotation_shape[0], z_stop + bounding_box_expansion[1]])
+        r_start = max([0, r_start - bounding_box_expansion[2] / 2])
+        r_stop = min([annotation_shape[1], r_stop + bounding_box_expansion[3]])
+        c_start = max([0, c_start - bounding_box_expansion[4]])
+        c_stop = min([annotation_shape[2], c_stop + bounding_box_expansion[5]])
     else:
         raise ValueError("bounding_box_expansion should be a tuple of len 3 or 6")
     return z_start, z_stop, r_start, r_stop, c_start, c_stop
