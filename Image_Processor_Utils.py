@@ -948,7 +948,7 @@ class Clip_Images_By_Extension(ImageProcessor):
             stop = int(non_zero_values[-1])
             start = max([start - inf_extension, 0])
             stop = min([stop + sup_extension, annotation.shape[0]])
-        return start, stop
+        return int(start), int(stop)
 
     def pre_process(self, input_features):
 
