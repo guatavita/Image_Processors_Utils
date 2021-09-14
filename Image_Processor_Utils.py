@@ -451,9 +451,11 @@ class Focus_on_CT(ImageProcessor):
             input_features['image'] = recovered_img
 
         if self.annotation:
-            recovered_annotation = self.recover_original(resize_image=input_features['annotation'], original_shape=self.original_shape,
-                                                  bb_parameters=self.bb_parameters, final_padding=self.final_padding,
-                                                  interpolator='linear_label', empty_value='zero')
+            recovered_annotation = self.recover_original(resize_image=input_features['annotation'],
+                                                         original_shape=self.original_shape,
+                                                         bb_parameters=self.bb_parameters,
+                                                         final_padding=self.final_padding,
+                                                         interpolator='linear_label', empty_value='zero')
             input_features['annotation'] = recovered_annotation
 
         recovered_pred = self.recover_original_hot(resize_image=pred, original_shape=self.original_shape,
@@ -918,14 +920,19 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
 
 
 class Clip_Images_By_Extension(ImageProcessor):
-    def __init__(self, inf_extension=np.inf, sup_extension=np.inf, use_spacing=False,
+    def __init__(self, input_keys=('image',), annotation_keys=('annotation',),
+                 inf_extension=np.inf, sup_extension=np.inf, use_spacing=False,
                  spacing_handle_key='primary_handle'):
         '''
+        input_keys: input keys to loop over
+        annotation_keys: annotation keys to define the inf/sup extension on each image
         inf_extension: inferior extension (mm)
         sup_extension: superior extension (mm)
         use_spacing: flag if use spacing to convert mm to number of slice
         spacing_handle_key: (if use_spacing==True) key to get the spacing list from the input_features dictionary
         '''
+        self.input_keys = input_keys
+        self.annotation_keys = annotation_keys
         self.inf_extension = inf_extension
         self.sup_extension = sup_extension
         self.use_spacing = use_spacing
@@ -944,18 +951,19 @@ class Clip_Images_By_Extension(ImageProcessor):
         return start, stop
 
     def pre_process(self, input_features):
-        image = input_features['image']
-        annotation = input_features['annotation']
 
         if self.use_spacing:
-            self.inf_extension = self.inf_extension/input_features['spacing_handle_key'][-1]
-            self.sup_extension = self.sup_extension/input_features['spacing_handle_key'][-1]
+            self.inf_extension = self.inf_extension / input_features[self.spacing_handle_key][-1]
+            self.sup_extension = self.sup_extension / input_features[self.spacing_handle_key][-1]
 
-        start, stop = self.get_start_stop(annotation, self.inf_extension, self.sup_extension)
-        if start != -1 and stop != -1:
-            image, annotation = image[start:stop, ...], annotation[start:stop, ...]
-        input_features['image'] = image
-        input_features['annotation'] = annotation.astype('int8')
+        for image_key, annotation_key in zip(self.input_keys, self.annotation_keys):
+            image = input_features[image_key]
+            annotation = input_features[annotation_key]
+            start, stop = self.get_start_stop(annotation, self.inf_extension, self.sup_extension)
+            if start != -1 and stop != -1:
+                image, annotation = image[start:stop, ...], annotation[start:stop, ...]
+            input_features[image_key] = image
+            input_features[annotation_key] = annotation.astype('int8')
         return input_features
 
 
