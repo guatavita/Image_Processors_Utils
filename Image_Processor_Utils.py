@@ -922,7 +922,7 @@ class Add_Bounding_Box_Indexes(ImageProcessor):
 class Clip_Images_By_Extension(ImageProcessor):
     def __init__(self, input_keys=('image',), annotation_keys=('annotation',),
                  inf_extension=np.inf, sup_extension=np.inf, use_spacing=False,
-                 spacing_handle_key='primary_handle'):
+                 spacing_key='spacing'):
         '''
         input_keys: input keys to loop over
         annotation_keys: annotation keys to define the inf/sup extension on each image
@@ -936,7 +936,7 @@ class Clip_Images_By_Extension(ImageProcessor):
         self.inf_extension = inf_extension
         self.sup_extension = sup_extension
         self.use_spacing = use_spacing
-        self.spacing_handle_key = spacing_handle_key
+        self.spacing_key = spacing_key
 
     def get_start_stop(self, annotation, inf_extension=np.inf, sup_extension=np.inf, desired_val=1):
         if len(annotation.shape) > 3:
@@ -953,8 +953,8 @@ class Clip_Images_By_Extension(ImageProcessor):
     def pre_process(self, input_features):
 
         if self.use_spacing:
-            self.inf_extension = self.inf_extension / input_features[self.spacing_handle_key][-1]
-            self.sup_extension = self.sup_extension / input_features[self.spacing_handle_key][-1]
+            self.inf_extension = self.inf_extension / input_features[self.spacing_key][-1]
+            self.sup_extension = self.sup_extension / input_features[self.spacing_key][-1]
 
         for image_key, annotation_key in zip(self.input_keys, self.annotation_keys):
             image = input_features[image_key]
