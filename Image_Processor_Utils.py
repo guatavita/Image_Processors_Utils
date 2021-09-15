@@ -954,13 +954,13 @@ class Clip_Images_By_Extension(ImageProcessor):
     def pre_process(self, input_features):
 
         if self.use_spacing:
-            self.inf_extension = floor(self.inf_extension / input_features[self.spacing_key][-1])
-            self.sup_extension = floor(self.sup_extension / input_features[self.spacing_key][-1])
+            inf_extension = floor(self.inf_extension / input_features[self.spacing_key][-1])
+            sup_extension = floor(self.sup_extension / input_features[self.spacing_key][-1])
 
         for image_key, annotation_key in zip(self.input_keys, self.annotation_keys):
             image = input_features[image_key]
             annotation = input_features[annotation_key]
-            start, stop = self.get_start_stop(annotation, self.inf_extension, self.sup_extension)
+            start, stop = self.get_start_stop(annotation, inf_extension, sup_extension)
             print("     {} {}".format(start, stop))
             input_features['og_shape'] = image.shape
             input_features['og_shape_{}'.format(image_key)] = image.shape
