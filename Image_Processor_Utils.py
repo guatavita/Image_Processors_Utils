@@ -956,12 +956,14 @@ class Clip_Images_By_Extension(ImageProcessor):
         if self.use_spacing:
             inf_extension = floor(self.inf_extension / input_features[self.spacing_key][-1])
             sup_extension = floor(self.sup_extension / input_features[self.spacing_key][-1])
+        else:
+            inf_extension = self.inf_extension
+            sup_extension = self.sup_extension
 
         for image_key, annotation_key in zip(self.input_keys, self.annotation_keys):
             image = input_features[image_key]
             annotation = input_features[annotation_key]
             start, stop = self.get_start_stop(annotation, inf_extension, sup_extension)
-            print("     {} {}".format(start, stop))
             input_features['og_shape'] = image.shape
             input_features['og_shape_{}'.format(image_key)] = image.shape
             input_features['start'] = start
@@ -978,15 +980,11 @@ class Clip_Images_By_Extension(ImageProcessor):
             image = input_features[image_key]
             start = input_features['start']
             stop = input_features['stop']
-            print("     {} {}".format(start, stop))
-            print("     {}".format(og_shape))
             pads = [(start, og_shape[0]-stop), (0, 0), (0, 0)]
             if len(image.shape) > 3:
                 pads += [(0, 0)]
             image = np.pad(image, pads, constant_values=np.min(image))
             input_features[image_key] = image
-            print("     {}".format(image.shape))
-
         return input_features
 
 
