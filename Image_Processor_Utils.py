@@ -980,12 +980,13 @@ class Clip_Images_By_Extension(ImageProcessor):
             image = input_features[image_key]
             start = input_features['start']
             stop = input_features['stop']
-            pads = [(start, og_shape[0]-stop), (0, 0), (0, 0)]
+            pads = [(start, og_shape[0] - stop), (0, 0), (0, 0)]
             if len(image.shape) > 3:
                 pads += [(0, 0)]
             image = np.pad(image, pads, constant_values=np.min(image))
             input_features[image_key] = image
         return input_features
+
 
 class sitk_handle_to_numpy(ImageProcessor):
     def __init__(self, image_keys=('image',)):
