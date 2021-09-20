@@ -988,7 +988,7 @@ class Clip_Images_By_Extension(ImageProcessor):
         return input_features
 
 
-class sitk_handle_to_numpy(ImageProcessor):
+class sITK_Handle_to_Numpy(ImageProcessor):
     def __init__(self, image_keys=('image',)):
         self.image_keys = image_keys
 
