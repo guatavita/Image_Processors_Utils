@@ -998,6 +998,7 @@ class sITK_Handle_to_Numpy(ImageProcessor):
             if not isinstance(handle, np.ndarray):
                 numpy_array = sitk.GetArrayFromImage(handle)
                 input_features[image_key] = numpy_array
+        return input_features
 
 
 class Box_Images(ImageProcessor):
