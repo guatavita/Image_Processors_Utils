@@ -987,6 +987,17 @@ class Clip_Images_By_Extension(ImageProcessor):
             input_features[image_key] = image
         return input_features
 
+class sitk_handle_to_numpy(ImageProcessor):
+    def __init__(self, image_keys=('image',)):
+        self.image_keys = image_keys
+
+    def pre_process(self, input_features):
+        for image_key in self.image_keys:
+            handle = input_features[image_key]
+            if not isinstance(handle, np.array):
+                numpy_array = sitk.GetImageFromArray(handle)
+                input_features[image_key] = numpy_array
+
 
 class Box_Images(ImageProcessor):
     def __init__(self, bounding_box_expansion, image_keys=('image',), annotation_key='annotation',
