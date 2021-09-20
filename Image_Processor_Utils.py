@@ -995,8 +995,8 @@ class sITK_Handle_to_Numpy(ImageProcessor):
     def pre_process(self, input_features):
         for image_key in self.image_keys:
             handle = input_features[image_key]
-            if not isinstance(handle, np.array):
-                numpy_array = sitk.GetImageFromArray(handle)
+            if not isinstance(handle, np.ndarray):
+                numpy_array = sitk.GetArrayFromImage(handle)
                 input_features[image_key] = numpy_array
 
 
