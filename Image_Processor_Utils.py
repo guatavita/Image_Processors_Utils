@@ -1738,6 +1738,27 @@ class Random_Rotation(ImageProcessor):
 
         return input_features
 
+class Keep_Connected_to_Mask(ImageProcessor):
+    def __init__(self, prediction_keys=('prediction',), mask_keys=('og_annotation',), max_comp = 2):
+        '''
+        This function keeps the prediction components connected to the mask. max_comp == 2 can be use whem mask
+        represent both lungs for example
+        '''
+        self.prediction_keys = prediction_keys
+        self.mask_keys = mask_keys
+        self.max_comp = max_comp
+        
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.prediction_keys)
+        for prediction_key, mask_key in zip(self.prediction_keys, self.mask_keys):
+            global_pred = copy.deepcopy(input_features[prediction_key])
+            global_pred = np.squeeze(global_pred)
+            guided_pred = global_pred + input_features[mask_key]
+            guided_pred[guided_pred>0] = 1
+            filtered_guide = extract_main_component(nparray=guided_pred, dist=None, max_comp=self.max_comp, min_vol=0)
+            global_pred = global_pred * filtered_guide
+            input_features[prediction_key] = global_pred
+        return input_features
 
 class ProcessPrediction(ImageProcessor):
     def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
