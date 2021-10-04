@@ -1755,7 +1755,9 @@ class Keep_Connected_to_Mask(ImageProcessor):
             global_pred = np.squeeze(global_pred)
             guided_pred = global_pred + input_features[mask_key]
             guided_pred[guided_pred>0] = 1
-            filtered_guide = extract_main_component(nparray=guided_pred, dist=None, max_comp=self.max_comp, min_vol=0)
+            filtered_guide = np.zeros_like(guided_pred)
+            for class_id in range(1, global_pred.shape[-1]):
+                filtered_guide[..., class_id] = extract_main_component(nparray=guided_pred[..., class_id], dist=None, max_comp=self.max_comp, min_vol=0)
             global_pred = global_pred * filtered_guide
             input_features[prediction_key] = global_pred
         return input_features
