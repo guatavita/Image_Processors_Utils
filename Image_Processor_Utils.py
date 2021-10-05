@@ -1738,8 +1738,9 @@ class Random_Rotation(ImageProcessor):
 
         return input_features
 
+
 class Keep_Connected_to_Mask(ImageProcessor):
-    def __init__(self, prediction_keys=('prediction',), mask_keys=('og_annotation',), max_comp = 2):
+    def __init__(self, prediction_keys=('prediction',), mask_keys=('og_annotation',), max_comp=2, min_vol=15000):
         '''
         This function keeps the prediction components connected to the mask. max_comp == 2 can be use whem mask
         represent both lungs for example
@@ -1747,20 +1748,23 @@ class Keep_Connected_to_Mask(ImageProcessor):
         self.prediction_keys = prediction_keys
         self.mask_keys = mask_keys
         self.max_comp = max_comp
-        
+        self.min_vol = min_vol
+
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=self.prediction_keys)
         for prediction_key, mask_key in zip(self.prediction_keys, self.mask_keys):
             global_pred = copy.deepcopy(input_features[prediction_key])
             global_pred = np.squeeze(global_pred)
             guided_pred = global_pred + input_features[mask_key]
-            guided_pred[guided_pred>0] = 1
+            guided_pred[guided_pred > 0] = 1
             filtered_guide = np.zeros_like(guided_pred)
             for class_id in range(1, global_pred.shape[-1]):
-                filtered_guide[..., class_id] = extract_main_component(nparray=guided_pred[..., class_id], dist=None, max_comp=self.max_comp, min_vol=0)
+                filtered_guide[..., class_id] = extract_main_component(nparray=guided_pred[..., class_id], dist=None,
+                                                                       max_comp=self.max_comp, min_vol=self.min_vol)
             global_pred = global_pred * filtered_guide
             input_features[prediction_key] = global_pred
         return input_features
+
 
 class ProcessPrediction(ImageProcessor):
     def __init__(self, threshold={}, connectivity={}, extract_main_comp={}, prediction_keys=('prediction',),
