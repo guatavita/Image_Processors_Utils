@@ -1922,9 +1922,11 @@ class Threshold_Using_Median(ImageProcessor):
             unique_values = tf.unique(tf.reshape(image, [-1]))
             # mid_index = unique_values.y.get_shape()[0] // 2
             # median_values = tf.reduce_min(tf.nn.top_k(unique_values.y, mid_index, sorted=False).values)
-            median_values = tfp.stats.percentile(unique_values, q=50.)
-            mask = tf.math.greater(image, tf.constant(median_values, dtype=image.dtype))
-            input_features[key] = tf.cast(mask, dtype=dtype)
+            median_values = tfp.stats.percentile(unique_values.y, q=50.)
+            mask = tf.math.greater(image, median_values)
+            binary = tf.cast(tf.where(mask, 1, 0), dtype=image.dtype)
+            image = tf.math.multiply(image, binary)
+            input_features[key] = tf.cast(image, dtype=dtype)
 
         return input_features
 
