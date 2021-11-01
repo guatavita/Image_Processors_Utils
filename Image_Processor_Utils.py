@@ -5,6 +5,7 @@ import tensorflow as tf
 from tensorflow.keras import backend as K
 import tensorflow_addons as tfa
 from tensorflow_addons.image import transform_ops
+import tensorflow_probability as tfp
 
 import numpy as np
 import SimpleITK as sitk
@@ -1906,6 +1907,26 @@ class Central_Crop_Img(ImageProcessor):
             input_features[key] = tf.image.central_crop(image=input_features[key], central_fraction=0.8)
         return input_features
 
+class Threshold_Using_Median(ImageProcessor):
+    def __init__(self, image_keys=('image',), dtypes=('float16',)):
+        '''
+        :param image_keys: image input of [row, col, 1]
+        '''
+        self.image_keys = image_keys
+        self.dtypes = dtypes
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
+        for key, dtype in zip(self.image_keys, self.dtypes):
+            image = tf.cast(input_features[key], dtype='float32')
+            unique_values = tf.unique(tf.reshape(image, [-1]))
+            # mid_index = unique_values.y.get_shape()[0] // 2
+            # median_values = tf.reduce_min(tf.nn.top_k(unique_values.y, mid_index, sorted=False).values)
+            median_values = tfp.stats.percentile(unique_values, q=50.)
+            mask = tf.math.greater(image, tf.constant(median_values, dtype=image.dtype))
+            input_features[key] = tf.cast(mask, dtype=dtype)
+
+        return input_features
 
 class Binarize_And_Remove_Unconnected(ImageProcessor):
     def __init__(self, image_keys=('image',), dtypes=('float16',)):
