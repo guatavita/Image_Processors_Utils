@@ -1907,6 +1907,7 @@ class Central_Crop_Img(ImageProcessor):
             input_features[key] = tf.image.central_crop(image=input_features[key], central_fraction=0.8)
         return input_features
 
+
 class Threshold_Using_Median(ImageProcessor):
     def __init__(self, image_keys=('image',), dtypes=('float16',)):
         '''
@@ -1929,6 +1930,30 @@ class Threshold_Using_Median(ImageProcessor):
             input_features[key] = tf.cast(image, dtype=dtype)
 
         return input_features
+
+
+class Replace_Padding_Value(ImageProcessor):
+    def __init__(self, image_keys=('image',), dtypes=('float16',), padding_value=0):
+        '''
+        :param image_keys: image input of [row, col, 1]
+        '''
+        self.image_keys = image_keys
+        self.dtypes = dtypes
+        self.padding_value = tf.constant([padding_value], dtype='float32')
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
+        for key, dtype in zip(self.image_keys, self.dtypes):
+            image = tf.cast(input_features[key], dtype='float32')
+            padding_mask = tf.math.equal(image, self.padding_value)
+            unique_values = tf.unique(tf.reshape(image, [-1]))
+            min_not_zero = tf.reduce_max(
+                tf.negative(tf.nn.top_k(tf.negative(unique_values.y), k=2, sorted=False).values))
+            image = tf.cast(tf.where(padding_mask, min_not_zero, image), dtype=image.dtype)
+            input_features[key] = tf.cast(image, dtype=dtype)
+
+        return input_features
+
 
 class Binarize_And_Remove_Unconnected(ImageProcessor):
     def __init__(self, image_keys=('image',), dtypes=('float16',)):
