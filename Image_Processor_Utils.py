@@ -1954,6 +1954,79 @@ class Replace_Padding_Value(ImageProcessor):
 
         return input_features
 
+class Normalize_Raw_Images(ImageProcessor):
+    def __init__(self, image_key='image', mask_key='mask', ):
+        '''
+        :param image_keys: image input of [row, col, 1]
+        '''
+        self.image_key = image_key
+        self.mask_key = mask_key
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, (self.image_key, self.mask_key,))
+
+        image = tf.cast(input_features[self.image_key], dtype='float32')
+        binary_image = tf.expand_dims(tf.cast(input_features[self.mask_key], dtype='float32'), axis=-1)
+        cond_mask = tf.math.greater(binary_image, tf.constant([0], dtype=image.dtype))
+        masked_image_values = tf.boolean_mask(image, cond_mask)
+
+        # get mean std inside the masked image
+        mean_inside = tf.math.reduce_mean(masked_image_values)
+        std_inside = tf.math.reduce_std(masked_image_values)
+
+        # apply std z
+        stdz_image = tf.math.divide(
+            tf.math.subtract(
+                image,
+                mean_inside
+            ),
+            std_inside
+        )
+
+        # mask std z image
+        stdz_image = tf.multiply(stdz_image, binary_image)
+        masked_image_values = tf.boolean_mask(stdz_image, cond_mask)
+
+        # offset min
+        min_inside = tf.math.reduce_min(masked_image_values)
+        stdz_image = tf.math.add(
+                stdz_image,
+                tf.math.abs(min_inside)
+            )
+
+        stdz_image = tf.multiply(stdz_image, binary_image)
+        masked_image_values = tf.boolean_mask(stdz_image, cond_mask)
+        min_inside = tf.math.reduce_min(masked_image_values)
+        max_inside = tf.math.reduce_max(masked_image_values)
+
+        # apply min max norm
+        image = tf.math.divide(
+            tf.math.subtract(
+                stdz_image,
+                min_inside
+            ),
+            tf.math.subtract(
+                max_inside,
+                min_inside
+            )
+        )
+
+        input_features[self.image_key] = image
+
+        return input_features
+
+
+class Hist_Equal(ImageProcessor):
+    def __init__(self, image_keys=('image',)):
+        self.image_keys = image_keys
+
+    def parse(self, input_features, *args, **kwargs):
+        _check_keys_(input_features, self.image_keys)
+        for image_key in self.image_keys:
+            input_features[image_key] = tfa.image.equalize(input_features[image_key])
+
+        return input_features
+
 
 class Binarize_And_Remove_Unconnected(ImageProcessor):
     def __init__(self, image_keys=('image',), dtypes=('float16',)):
@@ -1997,7 +2070,7 @@ class Binarize_And_Remove_Unconnected(ImageProcessor):
                     keep_id = label_id
                     volume_max = volume_id
 
-            # WARNING always specify the tf.sqeeze axis otherwise tensor.shape.ndims may be None
+            # WARNING always specify the tf.squeeze axis otherwise tensor.shape.ndims may be None
             mask = tf.math.equal(tf.expand_dims(tf.squeeze(labels, axis=0), axis=-1), [keep_id])
             binary = tf.cast(tf.where(mask, 1, 0), dtype=image.dtype)
             image = tf.math.multiply(image, binary)
