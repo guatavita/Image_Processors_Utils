@@ -1954,6 +1954,7 @@ class Replace_Padding_Value(ImageProcessor):
 
         return input_features
 
+
 class Normalize_Raw_Images(ImageProcessor):
     def __init__(self, image_key='image', mask_key='mask', ):
         '''
@@ -1990,9 +1991,9 @@ class Normalize_Raw_Images(ImageProcessor):
         # offset min
         min_inside = tf.math.reduce_min(masked_image_values)
         stdz_image = tf.math.add(
-                stdz_image,
-                tf.math.abs(min_inside)
-            )
+            stdz_image,
+            tf.math.abs(min_inside)
+        )
 
         stdz_image = tf.multiply(stdz_image, binary_image)
         masked_image_values = tf.boolean_mask(stdz_image, cond_mask)
@@ -2017,13 +2018,37 @@ class Normalize_Raw_Images(ImageProcessor):
 
 
 class Hist_Equal(ImageProcessor):
-    def __init__(self, image_keys=('image',)):
+    def __init__(self, image_keys=('image',), bins=255001):
         self.image_keys = image_keys
+        self.bins = bins
 
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, self.image_keys)
         for image_key in self.image_keys:
-            input_features[image_key] = tfa.image.equalize(input_features[image_key])
+            # input_features[image_key] = tfa.image.equalize(input_features[image_key])
+            image = input_features[image_key]
+            image = tf.cast(image, dtype='float32') # put that here cause float16 to int32 cause weird end values
+            image = tf.math.multiply(image, tf.constant(1000.0, dtype=image.dtype))
+            image = tf.cast(image, dtype='int32')
+
+            # Compute the histogram of the image channel.
+            histo = tf.histogram_fixed_width(image, [0, tf.math.reduce_max(image)], nbins=self.bins)
+
+            # For the purposes of computing the step, filter out the nonzeros.
+            nonzero_histo = tf.boolean_mask(histo, histo != 0)
+            step = (tf.reduce_sum(nonzero_histo) - nonzero_histo[-1]) // (self.bins - 1)
+
+            # If step is zero, return the original image.  Otherwise, build
+            # lut from the full histogram and step and then index from it.
+            if step == 0:
+                result = image
+            else:
+                lut_values = (tf.cumsum(histo, exclusive=True) + (step // 2)) // step
+                lut_values = tf.clip_by_value(lut_values, 0, (self.bins - 1))
+                result = tf.gather(lut_values, image)
+
+            image = tf.math.divide(tf.cast(result, dtype='float32'), tf.constant(1000.0, dtype='float32'))
+            input_features[image_key] = image
 
         return input_features
 
