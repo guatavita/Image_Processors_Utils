@@ -1972,6 +1972,8 @@ class Normalize_Raw_Images(ImageProcessor):
 
         if self.force_expand:
             binary_image = tf.expand_dims(binary_image, axis=-1)
+        else:
+            binary_image = tf.squeeze(binary_image, axis=0)
 
         cond_mask = tf.math.greater(binary_image, tf.constant([0], dtype=image.dtype))
         masked_image_values = tf.boolean_mask(image, cond_mask)
