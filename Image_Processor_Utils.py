@@ -1956,18 +1956,23 @@ class Replace_Padding_Value(ImageProcessor):
 
 
 class Normalize_Raw_Images(ImageProcessor):
-    def __init__(self, image_key='image', mask_key='mask', ):
+    def __init__(self, image_key='image', mask_key='mask', force_expand=True):
         '''
         :param image_keys: image input of [row, col, 1]
         '''
         self.image_key = image_key
         self.mask_key = mask_key
+        self.force_expand = force_expand
 
     def parse(self, input_features, *args, **kwargs):
         _check_keys_(input_features, (self.image_key, self.mask_key,))
 
         image = tf.cast(input_features[self.image_key], dtype='float32')
-        binary_image = tf.expand_dims(tf.cast(input_features[self.mask_key], dtype='float32'), axis=-1)
+        binary_image = tf.cast(input_features[self.mask_key], dtype='float32')
+
+        if self.force_expand:
+            binary_image = tf.expand_dims(binary_image, axis=-1)
+
         cond_mask = tf.math.greater(binary_image, tf.constant([0], dtype=image.dtype))
         masked_image_values = tf.boolean_mask(image, cond_mask)
 
