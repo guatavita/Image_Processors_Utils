@@ -37,6 +37,47 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
+def create_bony_mask(image_handle, label_offset=0, histogram_bins=32, nb_label=3, mask_value=1):
+    numpy_array = sitk.GetArrayFromImage(image_handle)
+    otsu_filter = sitk.OtsuMultipleThresholdsImageFilter()
+    otsu_filter.SetLabelOffset(label_offset)
+    otsu_filter.SetNumberOfThresholds(nb_label)
+    otsu_filter.SetNumberOfHistogramBins(histogram_bins)
+    otsu_output = otsu_filter.Execute(image_handle)
+
+    otsu_array = sitk.GetArrayFromImage(otsu_output)
+    average_values = []
+    for value in range(nb_label + 1):
+        average_values.append([np.mean(numpy_array[otsu_array == value]), value])
+    average_values.sort()
+    keep_label = average_values[-1][-1]
+    mask = np.zeros_like(otsu_array)
+    mask[otsu_array == keep_label] = mask_value
+
+    output_image = sitk.GetImageFromArray(mask)
+    output_image.SetOrigin(image_handle.GetOrigin())
+    output_image.SetSpacing(image_handle.GetSpacing())
+    output_image.SetDirection(image_handle.GetDirection())
+    return output_image
+
+
+def create_external(image, threshold_value=-250, mask_value=1, output_type=np.int16, run_3D=False):
+    external_mask = np.zeros(image.shape, dtype=output_type)
+    external_mask[image > threshold_value] = mask_value
+    # remove small stuff (for example table or mask artefact)
+    external_mask = morphology.opening(image=external_mask, selem=morphology.ball(2))
+    # remove unconnected component
+    main_component_filter = Remove_Smallest_Structures()
+    external_mask = main_component_filter.remove_smallest_component(external_mask)
+    # fill holes per slice (avoid bowel bag missed on top of image)
+    fill_hole_filter = Fill_Hole_Binary()
+    if run_3D:
+        external_mask = fill_hole_filter.fill_hole_binary_3D(external_mask)
+    else:
+        external_mask = fill_hole_filter.fill_hole_binary_2D(external_mask)
+    return external_mask
+
+
 def remove_non_liver(annotations, threshold=0.5, max_volume=9999999.0, min_volume=0.0, max_area=99999.0, min_area=0.0,
                      do_3D=True, do_2D=False, spacing=None):
     '''
@@ -366,25 +407,10 @@ class CreateExternal(ImageProcessor):
 
     def pre_process(self, input_features):
         _check_keys_(input_features=input_features, keys=(self.image_key,))
-        image = input_features[self.image_key]
-        self.external_mask = np.zeros(image.shape, dtype=self.output_type)
-        self.external_mask[image > self.threshold_value] = self.mask_value
-
-        # remove small stuff (for example table or mask artefact)
-        self.external_mask = morphology.opening(image=self.external_mask, selem=morphology.ball(2))
-
-        # remove unconnected component
-        main_component_filter = Remove_Smallest_Structures()
-        self.external_mask = main_component_filter.remove_smallest_component(self.external_mask)
-
-        # fill holes per slice (avoid bowel bag missed on top of image)
-        fill_hole_filter = Fill_Hole_Binary()
-        if self.run_3D:
-            self.external_mask = fill_hole_filter.fill_hole_binary_3D(self.external_mask)
-        else:
-            self.external_mask = fill_hole_filter.fill_hole_binary_2D(self.external_mask)
-
-        input_features[self.output_key] = self.external_mask
+        input_features[self.output_key] = create_external(image=input_features[self.image_key],
+                                                          output_type=self.output_type,
+                                                          threshold_value=self.threshold_value,
+                                                          mask_value=self.mask_value, run_3D=self.run_3D)
         return input_features
 
     def post_process(self, input_features):
@@ -2036,7 +2062,7 @@ class Hist_Equal(ImageProcessor):
         for image_key in self.image_keys:
             # input_features[image_key] = tfa.image.equalize(input_features[image_key])
             image = input_features[image_key]
-            image = tf.cast(image, dtype='float32') # put that here cause float16 to int32 cause weird end values
+            image = tf.cast(image, dtype='float32')  # put that here cause float16 to int32 cause weird end values
             image = tf.math.multiply(image, tf.constant(1000.0, dtype=image.dtype))
             image = tf.cast(image, dtype='int32')
 
