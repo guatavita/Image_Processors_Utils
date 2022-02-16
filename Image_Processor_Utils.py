@@ -43,7 +43,7 @@ def convert_array_to_itk(array, template=None):
         output_image.SetOrigin(template.GetOrigin())
         output_image.SetSpacing(template.GetSpacing())
         output_image.SetDirection(template.GetDirection())
-    return output
+    return output_image
 
 
 def create_bony_mask(image, label_offset=0, histogram_bins=32, nb_label=3, mask_value=1):
