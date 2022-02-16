@@ -37,28 +37,35 @@ def _check_keys_(input_features, keys):
                                               '{} was not found'.format(keys)
 
 
-def create_bony_mask(image_handle, label_offset=0, histogram_bins=32, nb_label=3, mask_value=1):
-    numpy_array = sitk.GetArrayFromImage(image_handle)
+def convert_array_to_itk(array, template=None):
+    output_image = sitk.GetImageFromArray(array)
+    if template is not None:
+        output_image.SetOrigin(template.GetOrigin())
+        output_image.SetSpacing(template.GetSpacing())
+        output_image.SetDirection(template.GetDirection())
+    return output
+
+
+def create_bony_mask(image, label_offset=0, histogram_bins=32, nb_label=3, mask_value=1):
+    if isinstance(image, np.ndarray):
+        image_pointer = sitk.GetImageFromArray(image)
+    else:
+        image_pointer = image
     otsu_filter = sitk.OtsuMultipleThresholdsImageFilter()
     otsu_filter.SetLabelOffset(label_offset)
     otsu_filter.SetNumberOfThresholds(nb_label)
     otsu_filter.SetNumberOfHistogramBins(histogram_bins)
-    otsu_output = otsu_filter.Execute(image_handle)
-
+    otsu_output = otsu_filter.Execute(image_pointer)
     otsu_array = sitk.GetArrayFromImage(otsu_output)
+
     average_values = []
     for value in range(nb_label + 1):
-        average_values.append([np.mean(numpy_array[otsu_array == value]), value])
+        average_values.append([np.mean(image[otsu_array == value]), value])
     average_values.sort()
     keep_label = average_values[-1][-1]
     mask = np.zeros_like(otsu_array)
     mask[otsu_array == keep_label] = mask_value
-
-    output_image = sitk.GetImageFromArray(mask)
-    output_image.SetOrigin(image_handle.GetOrigin())
-    output_image.SetSpacing(image_handle.GetSpacing())
-    output_image.SetDirection(image_handle.GetDirection())
-    return output_image
+    return mask
 
 
 def create_external(image, threshold_value=-250, mask_value=1, output_type=np.int16, run_3D=False):
