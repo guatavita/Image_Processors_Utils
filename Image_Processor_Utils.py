@@ -69,6 +69,9 @@ def create_bony_mask(image, label_offset=0, histogram_bins=32, nb_label=3, mask_
 
 
 def create_external(image, threshold_value=-250, mask_value=1, output_type=np.int16, run_3D=False):
+    if not isinstance(image, np.ndarray):
+        image = sitk.GetArrayFromImage(image)
+
     external_mask = np.zeros(image.shape, dtype=output_type)
     external_mask[image > threshold_value] = mask_value
     # remove small stuff (for example table or mask artefact)
