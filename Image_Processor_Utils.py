@@ -46,11 +46,14 @@ def convert_array_to_itk(array, template=None):
     return output_image
 
 
-def create_bony_mask(image, label_offset=0, histogram_bins=32, nb_label=3, mask_value=1):
-    if isinstance(image, np.ndarray):
-        image_pointer = sitk.GetImageFromArray(image)
+def create_bony_mask(input, label_offset=0, histogram_bins=32, nb_label=3, mask_value=1):
+    if isinstance(input, np.ndarray):
+        image_pointer = sitk.GetImageFromArray(input)
+        image_array = input
     else:
-        image_pointer = image
+        image_pointer = input
+        image_array = sitk.GetArrayFromImage(input)
+
     otsu_filter = sitk.OtsuMultipleThresholdsImageFilter()
     otsu_filter.SetLabelOffset(label_offset)
     otsu_filter.SetNumberOfThresholds(nb_label)
@@ -60,7 +63,7 @@ def create_bony_mask(image, label_offset=0, histogram_bins=32, nb_label=3, mask_
 
     average_values = []
     for value in range(nb_label + 1):
-        average_values.append([np.mean(image[otsu_array == value]), value])
+        average_values.append([np.mean(image_array[otsu_array == value]), value])
     average_values.sort()
     keep_label = average_values[-1][-1]
     mask = np.zeros_like(otsu_array)
@@ -262,6 +265,10 @@ def compute_binary_morphology(input_img, radius=1, morph_type='closing'):
         input_img = binary_closing(input_img, structure=struct)
     elif morph_type == 'opening':
         input_img = binary_opening(input_img, structure=struct)
+    elif morph_type == 'erosion':
+        input_img = binary_erosion(input_img, structure=struct)
+    elif morph_type == 'dilation':
+        input_img = binary_dilation(input_img, structure=struct)
     else:
         raise ValueError("Type {} is not supported".format(morph_type))
 
