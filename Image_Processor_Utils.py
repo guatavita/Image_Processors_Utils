@@ -239,14 +239,10 @@ def compute_bounding_box(annotation, padding=2):
     shape = annotation.shape
     indexes = np.where(np.any(annotation, axis=(1, 2)) == True)[0]
     min_slice, max_slice = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[0])
-    '''
-    Get the row values of primary and secondary
-    '''
+    # Get the row values of primary and secondary
     indexes = np.where(np.any(annotation, axis=(0, 2)) == True)[0]
     min_row, max_row = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[1])
-    '''
-    Get the col values of primary and secondary
-    '''
+    # Get the col values of primary and secondary
     indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
     min_col, max_col = max(0, indexes[0] - padding), min(indexes[-1] + padding, shape[2])
     return [min_slice, max_slice, min_row, max_row, min_col, max_col]
