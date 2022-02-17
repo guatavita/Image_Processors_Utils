@@ -351,6 +351,7 @@ class Remove_Smallest_Structures(object):
             convert = True
         else:
             annotation_handle = annotation
+            convert = False
         label_image = self.Connected_Component_Filter.Execute(
             sitk.BinaryThreshold(sitk.Cast(annotation_handle, sitk.sitkFloat32), lowerThreshold=0.01,
                                  upperThreshold=np.inf))
