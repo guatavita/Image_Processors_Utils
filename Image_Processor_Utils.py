@@ -11,7 +11,7 @@ import numpy as np
 import SimpleITK as sitk
 from skimage import morphology, measure
 from scipy.spatial import distance
-from scipy.ndimage import binary_opening, binary_closing, generate_binary_structure
+from scipy.ndimage import binary_opening, binary_closing, binary_erosion, binary_dilation, generate_binary_structure
 import cv2
 from math import floor, ceil
 
@@ -229,6 +229,21 @@ def extract_main_component(nparray, dist=50, max_comp=2, min_vol=2000):
         nparray = temp_img
 
     return nparray
+
+
+def get_label_bounding_boxes(annotation_handle, lower_threshold, upper_threshold):
+    Connected_Component_Filter = sitk.ConnectedComponentImageFilter()
+    RelabelComponent = sitk.RelabelComponentImageFilter()
+    RelabelComponent.SortByObjectSizeOn()
+    stats = sitk.LabelShapeStatisticsImageFilter()
+    thresholded_image = sitk.BinaryThreshold(annotation_handle, lowerThreshold=lower_threshold,
+                                             upperThreshold=upper_threshold)
+    connected_image = Connected_Component_Filter.Execute(thresholded_image)
+    connected_image = RelabelComponent.Execute(connected_image)
+    stats.Execute(connected_image)
+    bounding_boxes = [stats.GetBoundingBox(l) for l in stats.GetLabels()]
+    num_voxels = np.asarray([stats.GetNumberOfPixels(l) for l in stats.GetLabels()]).astype('float32')
+    return bounding_boxes, num_voxels
 
 
 def compute_bounding_box(annotation, padding=2):
