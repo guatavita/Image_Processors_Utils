@@ -424,6 +424,28 @@ class Fill_Hole_Binary(object):
         return output
 
 
+class RandomNoise(ImageProcessor):
+    def __init__(self, input_keys=('image',), max_noise=2.5):
+        '''
+        Return the image feature with an additive noise randomly weighted between [0.0, max_noise)
+        :param max_noise: maximum magnitude of the noise in HU (apply before normalization)
+        '''
+        self.input_keys = input_keys
+        self.max_noise = max_noise
+
+    def parse(self, image_features, *args, **kwargs):
+        _check_keys_(input_features=image_features, keys=self.input_keys)
+        for key in self.input_keys:
+            data = image_features[key]
+            dtype = data.dtype
+            data = tf.cast(data, 'float32')
+            data += tf.random.uniform(shape=[], minval=0.0, maxval=self.max_noise,
+                                      dtype='float32') * tf.random.normal(tf.shape(data),
+                                                                          mean=0.0, stddev=1.0, dtype='float32')
+            data = tf.cast(data, dtype)
+            image_features[key] = data
+        return image_features
+
 class DeepCopyKey(ImageProcessor):
     def __init__(self, from_keys=('annotation',), to_keys=('annotation_original',)):
         self.from_keys, self.to_keys = from_keys, to_keys
