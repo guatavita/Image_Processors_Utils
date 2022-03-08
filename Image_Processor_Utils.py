@@ -428,11 +428,11 @@ class DeepCopyKey(ImageProcessor):
     def __init__(self, from_keys=('annotation',), to_keys=('annotation_original',)):
         self.from_keys, self.to_keys = from_keys, to_keys
 
-    def pre_process(self, input_features):
-        _check_keys_(input_features=input_features, keys=self.from_keys)
+    def parse(self, image_features):
+        _check_keys_(input_features=image_features, keys=self.from_keys)
         for from_key, to_key in zip(self.from_keys, self.to_keys):
-            input_features[to_key] = tf.raw_ops.Copy(input_features[from_key])
-        return input_features
+            image_features[to_key] = tf.identity(image_features[from_key])
+        return image_features
 
 
 class CreateExternal(ImageProcessor):
