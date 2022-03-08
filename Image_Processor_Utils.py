@@ -424,6 +424,17 @@ class Fill_Hole_Binary(object):
         return output
 
 
+class DeepCopyKey(ImageProcessor):
+    def __init__(self, from_keys=('annotation',), to_keys=('annotation_original',)):
+        self.from_keys, self.to_keys = from_keys, to_keys
+
+    def pre_process(self, input_features):
+        _check_keys_(input_features=input_features, keys=self.from_keys)
+        for from_key, to_key in zip(self.from_keys, self.to_keys):
+            input_features[to_key] = tf.raw_ops.Copy(input_features[from_key])
+        return input_features
+
+
 class CreateExternal(ImageProcessor):
     def __init__(self, image_key='image', output_key='external', output_type=np.int16, threshold_value=-250.0,
                  mask_value=1, run_3D=False):
