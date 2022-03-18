@@ -37,6 +37,7 @@ def convert_array_to_itk(array, template=None):
         output_image.SetDirection(template.GetDirection())
     return output_image
 
+
 def compute_centroid(annotation):
     '''
     :param annotation: A binary image of shape [# images, # rows, # cols, channels]
@@ -49,6 +50,7 @@ def compute_centroid(annotation):
     indexes = np.where(np.any(annotation, axis=(0, 1)) == True)[0]
     index_col = int(np.mean(indexes))
     return (index_slice, index_row, index_col)
+
 
 def create_bony_mask(input, label_offset=0, histogram_bins=32, nb_label=3, mask_value=1):
     if isinstance(input, np.ndarray):
