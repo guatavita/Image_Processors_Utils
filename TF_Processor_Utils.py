@@ -1,7 +1,9 @@
+import sys, os
 import tensorflow as tf
 import tensorflow_addons as tfa
 import tensorflow_probability as tfp
 
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 from Image_Processor_Utils import *
 
 
