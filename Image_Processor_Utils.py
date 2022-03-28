@@ -1555,3 +1555,73 @@ def _get_start_stop_(annotation, extension=np.inf, desired_val=1):
         start = max([start - extension, 0])
         stop = min([stop + extension, annotation.shape[0]])
     return start, stop
+
+
+class Resize_Image(ImageProcessor):
+    def __init__(self, desired_size=(None, None, None), out_keys=('image',), interp_keys=(False,)):
+        '''
+        :param desired_size: (x, y, z)
+        :param out_keys: ('image',)
+        :param interp_keys: False/True linear/nearest interpolators
+        '''
+        self.desired_size = desired_size
+        self.out_keys = out_keys
+        self.interp_keys = interp_keys
+
+    def resample_image(self, input_image, input_spacing=None, output_size=(256, 256, 64), is_annotation=False):
+        '''
+        :param input_image: Image of the shape # images, rows, cols, or sitk.Image
+        :param spacing: Goes in the form of (row_dim, col_dim, z_dim)
+        :param is_annotation: Whether to use Linear or NearestNeighbor, Nearest should be used for annotations
+        :return:
+        '''
+        Resample = sitk.ResampleImageFilter()
+
+        if type(input_image) is np.ndarray:
+            image = sitk.GetImageFromArray(input_image)
+        else:
+            image = input_image
+        if input_spacing is not None:
+            image.SetSpacing(input_spacing)
+
+        if is_annotation:
+            if type(input_image) is np.ndarray:
+                input_image = input_image.astype('int8')
+            Resample.SetInterpolator(sitk.sitkNearestNeighbor)
+        else:
+            Resample.SetInterpolator(sitk.sitkLinear)
+
+        output_size = np.asarray(output_size)
+        orig_size = np.array(image.GetSize(), dtype=np.int)
+        orig_spacing = np.asarray(image.GetSpacing())
+        new_spacing = orig_spacing * (orig_size / output_size)
+        output_size = [np.int(i) for i in output_size]
+        Resample.SetSize(output_size)
+        Resample.SetOutputSpacing(new_spacing)
+        Resample.SetOutputDirection(image.GetDirection())
+        Resample.SetOutputOrigin(image.GetOrigin())
+        output = Resample.Execute(image)
+        if type(input_image) is np.ndarray:
+            output = sitk.GetArrayFromImage(output)
+        return output
+
+    def pre_process(self, input_features):
+        for out_key, interp_key in zip(self.out_keys, self.interp_keys):
+            input_spacing = tuple([float(i) for i in input_features['{}_spacing'.format(out_key)]])
+            input_size = input_features[out_key].shape[::-1]  # reverse shape
+            image_handle = sitk.GetImageFromArray(input_features[out_key])
+            image_handle.SetSpacing(input_spacing)
+            output_size = []
+            for index in range(3):
+                if self.desired_size[index] is None:
+                    size = input_size[index]
+                    output_size.append(size)
+                else:
+                    output_size.append(self.desired_size[index])
+            output_size = tuple(output_size)
+            if output_size != input_size:
+                image_handle = self.resample_image(input_image=image_handle, input_spacing=input_spacing,
+                                                   output_size=output_size, is_annotation=interp_key)
+                input_features[out_key] = sitk.GetArrayFromImage(image_handle)
+                input_features['{}_spacing'.format(out_key)] = np.asarray(image_handle.GetSpacing(), dtype='float32')
+        return input_features
