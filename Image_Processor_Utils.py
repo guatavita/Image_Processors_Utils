@@ -1558,7 +1558,8 @@ def _get_start_stop_(annotation, extension=np.inf, desired_val=1):
 
 
 class Resize_Image(ImageProcessor):
-    def __init__(self, desired_size=(None, None, None), out_keys=('image',), interp_keys=(False,)):
+    def __init__(self, desired_size=(None, None, None), out_keys=('image',), interp_keys=(False,),
+                 keep_ratio_keys=(True,)):
         '''
         :param desired_size: (x, y, z)
         :param out_keys: ('image',)
@@ -1567,6 +1568,7 @@ class Resize_Image(ImageProcessor):
         self.desired_size = desired_size
         self.out_keys = out_keys
         self.interp_keys = interp_keys
+        self.keep_ratio_keys = keep_ratio_keys
 
     def resample_image(self, input_image, input_spacing=None, output_size=(256, 256, 64), is_annotation=False):
         '''
@@ -1606,22 +1608,51 @@ class Resize_Image(ImageProcessor):
         return output
 
     def pre_process(self, input_features):
-        for out_key, interp_key in zip(self.out_keys, self.interp_keys):
+        for out_key, interp_key, keep_ratio_key in zip(self.out_keys, self.interp_keys, self.keep_ratio_keys):
             input_spacing = tuple([float(i) for i in input_features['{}_spacing'.format(out_key)]])
             input_size = input_features[out_key].shape[::-1]  # reverse shape
             image_handle = sitk.GetImageFromArray(input_features[out_key])
             image_handle.SetSpacing(input_spacing)
             output_size = []
-            for index in range(3):
-                if self.desired_size[index] is None:
-                    size = input_size[index]
-                    output_size.append(size)
-                else:
-                    output_size.append(self.desired_size[index])
+            if keep_ratio_key:
+                max_size = max(input_size[:-1])
+                for index in range(3):
+                    if self.desired_size[index] is None:
+                        size = input_size[index]
+                        output_size.append(size)
+                    else:
+                        output_size.append(int(self.desired_size[index] * input_size[index] / max_size))
+            else:
+                for index in range(3):
+                    if self.desired_size[index] is None:
+                        size = input_size[index]
+                        output_size.append(size)
+                    else:
+                        output_size.append(self.desired_size[index])
             output_size = tuple(output_size)
             if output_size != input_size:
                 image_handle = self.resample_image(input_image=image_handle, input_spacing=input_spacing,
                                                    output_size=output_size, is_annotation=interp_key)
-                input_features[out_key] = sitk.GetArrayFromImage(image_handle)
+                np_image = sitk.GetArrayFromImage(image_handle)
+                if keep_ratio_key:
+                    # pad the image to fill to wanted dim
+                    holder = []
+                    for index in range(3):
+                        if self.desired_size[index] is None:
+                            holder.append(input_size[index])
+                        else:
+                            holder.append(self.desired_size[index])
+                    holder = holder[::-1]
+                    diff_holder = holder - np.asarray(np_image.shape)
+                    padding = [[max([int(i / 2), 0]), max([int(i / 2), 0])] for i in diff_holder]
+                    np_image = np.pad(np_image, padding, 'constant', constant_values=0.0)
+
+                    diff_holder = holder - np.asarray(np_image.shape)
+                    supp_padding = [[0, i] for i in diff_holder]
+                    if np.max(supp_padding) > 0:
+                        np_image = np.pad(np_image, supp_padding, 'constant', constant_values=0.0)
+
+                input_features[out_key] = np_image
+
                 input_features['{}_spacing'.format(out_key)] = np.asarray(image_handle.GetSpacing(), dtype='float32')
         return input_features
